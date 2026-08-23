@@ -1,0 +1,2 @@
+import { RegisterForm } from "@/components/auth/register-form";
+export default function RegisterPage(){return <div><div className="mb-7"><div className="text-xs font-black uppercase tracking-[.18em] text-emerald-500">Create workspace</div><h1 className="mt-2 text-3xl font-black">Start your first analysis</h1><p className="mt-2 text-sm text-[var(--muted-foreground)]">Choose your experience level after registration and the UI will adapt.</p></div><RegisterForm/></div>}

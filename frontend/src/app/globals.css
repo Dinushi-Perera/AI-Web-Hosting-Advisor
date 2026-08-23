@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf9f5;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --muted: #f2f0e8;
+  --muted-foreground: #6b665f;
+  --border: #e4dfd4;
+  --primary: #047857;
+  --primary-foreground: #ffffff;
+  --secondary: #d97706;
+  --success: #15803d;
+  --warning: #c2410c;
+  --danger: #dc2626;
+  --info: #0f766e;
+  --ring: rgba(4, 120, 87, .22);
+  --shadow: rgba(28, 25, 23, .08);
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #f5f5f4;
+  --card: #0a0a0a;
+  --card-foreground: #f5f5f4;
+  --muted: #171717;
+  --muted-foreground: #a8a29e;
+  --border: #292524;
+  --primary: #34d399;
+  --primary-foreground: #022c22;
+  --secondary: #f59e0b;
+  --success: #4ade80;
+  --warning: #fb923c;
+  --danger: #f87171;
+  --info: #2dd4bf;
+  --ring: rgba(52, 211, 153, .22);
+  --shadow: rgba(0, 0, 0, .68);
+}
+
+* { border-color: var(--border); }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  transition: background-color .3s ease, color .3s ease;
+}
+button, a, input, select, textarea { outline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+::selection { background: color-mix(in srgb, var(--primary) 28%, transparent); }
+
+.text-muted { color: var(--muted-foreground); }
+.bg-card { background: var(--card); }
+.bg-muted { background: var(--muted); }
+.border-base { border-color: var(--border); }
+.gradient-text {
+  background: linear-gradient(90deg, #047857, #d97706 58%, #c2410c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-grid {
+  background-image:
+    radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 34%),
+    linear-gradient(to right, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-size: auto, 34px 34px, 34px 34px;
+  mask-image: linear-gradient(to bottom, black, transparent 92%);
+}
+.glow { box-shadow: 0 24px 80px color-mix(in srgb, var(--primary) 18%, transparent); }
+.card-hover { transition: transform .24s cubic-bezier(.2,.8,.2,1), box-shadow .24s ease, border-color .24s ease; }
+.card-hover:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--primary) 34%, var(--border)); box-shadow: 0 20px 48px var(--shadow); }
+.dark .card-hover:hover { box-shadow: 0 22px 55px rgba(0,0,0,.72); }
+main > * { animation: reveal-up .42s cubic-bezier(.2,.8,.2,1) both; }
+main > *:nth-child(2) { animation-delay: .06s; }
+main > *:nth-child(3) { animation-delay: .11s; }
+.pulse-ring { animation: pulse-ring 2.2s ease-out infinite; }
+
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 var(--ring); }
+  50% { box-shadow: 0 0 0 9px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
+}

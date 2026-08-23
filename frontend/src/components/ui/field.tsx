@@ -1,0 +1,2 @@
+import type { ReactNode } from "react";
+export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) { return <label className="grid gap-1.5 text-sm font-medium"><span>{label}</span>{children}{error ? <span className="text-xs text-[var(--danger)]">{error}</span> : hint ? <span className="text-xs text-[var(--muted-foreground)]">{hint}</span> : null}</label>; }
