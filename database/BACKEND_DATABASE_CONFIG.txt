@@ -1,0 +1,17 @@
+AI Web Hosting Advisor - Backend Database Configuration
+=======================================================
+
+Canonical MySQL database name required by the database specification:
+ai_web_hosting_advisor
+
+Use this in the FastAPI backend .env:
+DATABASE_URL=mysql+pymysql://hosting_app:YOUR_PASSWORD@mysql:3306/ai_web_hosting_advisor
+
+Use this in docker-compose MySQL environment:
+MYSQL_DATABASE=ai_web_hosting_advisor
+
+Important:
+The earlier generated backend package used hosting_advisor as its default database name in .env.example/docker-compose.yml. Change only that database-name setting to ai_web_hosting_advisor. The SQLAlchemy table and column contract is already preserved by ai_web_hosting_advisor.sql.
+
+Currency:
+USD only. Do not add FX or currency conversion tables.

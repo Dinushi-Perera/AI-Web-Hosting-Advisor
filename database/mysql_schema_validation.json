@@ -1,0 +1,24 @@
+{
+  "backend_table_count": 27,
+  "sql_table_count": 51,
+  "backend_missing_tables": [],
+  "backend_missing_columns": {},
+  "advanced_missing_tables": [],
+  "unknown_fk_targets": [],
+  "views": [
+    "vw_current_hosting_prices",
+    "vw_latest_project_analysis",
+    "vw_current_recommendations",
+    "vw_user_project_summary",
+    "vw_project_dashboard_summary",
+    "vw_recommendation_cost_summary",
+    "vw_ml_training_jobs"
+  ],
+  "foreign_key_count": 77,
+  "check_constraint_count": 112,
+  "usd_check_occurrences": 6,
+  "forbidden_currency_tokens": [],
+  "exchange_table_present": false,
+  "line_count": 1978,
+  "size_bytes": 110576
+}
