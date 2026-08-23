@@ -1,0 +1,120 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_web_hosting_advisor}
+      MYSQL_USER: ${MYSQL_USER:-hosting_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hosting_app_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/ai_web_hosting_advisor.sql:/docker-entrypoint-initdb.d/001_ai_web_hosting_advisor.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: ./backend
+    environment: &backend_env
+      APP_ENV: development
+      APP_NAME: AI Web Hosting Advisor
+      API_V1_PREFIX: /api/v1
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hosting_app}:${MYSQL_PASSWORD:-hosting_app_password}@mysql:3306/${MYSQL_DATABASE:-ai_web_hosting_advisor}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-this-to-a-long-random-secret-123456789}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: 15
+      REFRESH_TOKEN_DAYS: 7
+      PASSWORD_RESET_MINUTES: 30
+      FRONTEND_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      PAGESPEED_API_KEY: ${PAGESPEED_API_KEY:-}
+      PAGESPEED_CACHE_SECONDS: 900
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      REPORT_STORAGE_DIR: storage/reports
+      LOAD_TEST_STORAGE_DIR: storage/load_tests
+      LOG_LEVEL: INFO
+      PRICING_STALE_DAYS: 30
+      DEFAULT_CURRENCY: USD
+      COOKIE_SECURE: "false"
+      COOKIE_SAMESITE: lax
+      AUTO_CREATE_TABLES: "false"
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@hostingadvisor.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin123!ChangeMe}
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_storage:/app/storage
+      - backend_models:/app/app/ml/models
+    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./backend
+    environment: *backend_env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_storage:/app/storage
+      - backend_models:/app/app/ml/models
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+        NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+      NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_storage:
+  backend_models:
