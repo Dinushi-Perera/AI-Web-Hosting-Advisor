@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.joblib
+storage/reports/*.pdf
+storage/load_tests/*.js
+!storage/reports/.gitkeep
+!storage/load_tests/.gitkeep

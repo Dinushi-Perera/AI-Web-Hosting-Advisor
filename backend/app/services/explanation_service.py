@@ -1,0 +1,4 @@
+def recommendation_explanation(recommendation:dict)->dict:
+    option=recommendation.get("recommended_option")
+    name={"CLOUD_VM":"Cloud VM","KUBERNETES":"Kubernetes","VPS":"VPS"}.get(option,option)
+    return {"why_recommended":f"{name} has the strongest combined fit across workload, budget, scalability, reliability and operational complexity for the available evidence.","why_alternatives_scored_lower":[{"option":a.get("option"),"reason":a.get("weaknesses",["Lower overall fit score"])[0] if a.get("weaknesses") else "Lower overall fit score"} for a in recommendation.get("alternatives",[]) if a.get("option")!=option],"main_evidence":recommendation.get("reasons",[]),"assumptions":recommendation.get("assumptions",[]),"risks":recommendation.get("warnings",[]),"next_actions":["Replace estimated traffic with measured peak concurrency when available","Review the stored provider price timestamp before purchase","Re-run analysis after material input or pricing changes"]}

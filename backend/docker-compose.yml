@@ -1,0 +1,70 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ai_web_hosting_advisor
+      MYSQL_USER: hosting_app
+      MYSQL_PASSWORD: hosting_app_password
+      MYSQL_ROOT_PASSWORD: root_change_me
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database/ai_web_hosting_advisor.sql:/docker-entrypoint-initdb.d/001_ai_web_hosting_advisor.sql:ro
+    healthcheck:
+      test: ["CMD","mysqladmin","ping","-h","localhost","-proot_change_me"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  backend:
+    build: .
+    environment: &backend_env
+      APP_ENV: development
+      DATABASE_URL: mysql+pymysql://hosting_app:hosting_app_password@mysql:3306/ai_web_hosting_advisor
+      JWT_SECRET: CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
+      FRONTEND_URL: http://localhost:3000
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AI Web Hosting Advisor}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      PASSWORD_RESET_RETURN_TOKEN: "false"
+      CORS_ORIGINS: http://localhost:3000
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      DEFAULT_CURRENCY: USD
+      COOKIE_SECURE: "false"
+      COOKIE_SAMESITE: lax
+      AUTO_CREATE_TABLES: "false"
+    ports: ["8000:8000"]
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - ./storage:/app/storage
+      - ./app/ml/models:/app/app/ml/models
+    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  worker:
+    build: .
+    environment: *backend_env
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - ./storage:/app/storage
+      - ./app/ml/models:/app/app/ml/models
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
+volumes:
+  mysql_data:
+  redis_data:
