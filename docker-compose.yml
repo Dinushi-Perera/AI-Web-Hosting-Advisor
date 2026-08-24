@@ -3,11 +3,11 @@ services:
     image: mysql:8.4
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_web_hosting_advisor}
-      MYSQL_USER: ${MYSQL_USER:-hosting_app}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hosting_app_password}
+      MYSQL_USER: ${MYSQL_APP_USER:-hosting_app}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:-hosting_app_password}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
     ports:
-      - "3306:3306"
+      - "${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/ai_web_hosting_advisor.sql:/docker-entrypoint-initdb.d/001_ai_web_hosting_advisor.sql:ro
@@ -38,14 +38,23 @@ services:
       APP_ENV: development
       APP_NAME: AI Web Hosting Advisor
       API_V1_PREFIX: /api/v1
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hosting_app}:${MYSQL_PASSWORD:-hosting_app_password}@mysql:3306/${MYSQL_DATABASE:-ai_web_hosting_advisor}
+      DATABASE_URL: mysql+pymysql://${MYSQL_APP_USER:-hosting_app}:${MYSQL_APP_PASSWORD:-hosting_app_password}@mysql:3306/${MYSQL_DATABASE:-ai_web_hosting_advisor}
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-this-to-a-long-random-secret-123456789}
       JWT_ALGORITHM: HS256
       ACCESS_TOKEN_MINUTES: 15
       REFRESH_TOKEN_DAYS: 7
       PASSWORD_RESET_MINUTES: 30
-      FRONTEND_URL: http://localhost:3000
-      CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:${FRONTEND_HOST_PORT:-3001}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AI Web Hosting Advisor}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      PASSWORD_RESET_RETURN_TOKEN: ${PASSWORD_RESET_RETURN_TOKEN:-false}
+      CORS_ORIGINS: http://localhost:${FRONTEND_HOST_PORT:-3001}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -54,6 +63,8 @@ services:
       PAGESPEED_CACHE_SECONDS: 900
       LLM_ENABLED: ${LLM_ENABLED:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CLASSIFIER_MODEL_PATH: models/classifier/production/hosting_classifier_SELECTED_full5000.joblib
+      RESOURCE_MODEL_PATH: models/resource/production/resource_sizer_SELECTED_full5000.joblib
       REPORT_STORAGE_DIR: storage/reports
       LOAD_TEST_STORAGE_DIR: storage/load_tests
       LOG_LEVEL: INFO
@@ -65,7 +76,7 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@hostingadvisor.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin123!ChangeMe}
     ports:
-      - "8000:8000"
+      - "${BACKEND_HOST_PORT:-8001}:8000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -74,7 +85,8 @@ services:
     volumes:
       - backend_storage:/app/storage
       - backend_models:/app/app/ml/models
-    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      - ./models:/app/models:ro
+    command: sh -c "alembic upgrade head && python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3).read()"]
       interval: 10s
@@ -94,21 +106,22 @@ services:
     volumes:
       - backend_storage:/app/storage
       - backend_models:/app/app/ml/models
+      - ./models:/app/models:ro
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_API_BASE_URL: ${DOCKER_PUBLIC_API_BASE_URL:-http://localhost:8001/api/v1}
         NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
         NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_API_BASE_URL: ${DOCKER_PUBLIC_API_BASE_URL:-http://localhost:8001/api/v1}
       NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
       NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_HOST_PORT:-3001}:3000"
     depends_on:
       backend:
         condition: service_healthy
