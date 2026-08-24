@@ -1,10 +1,27 @@
 from sqlalchemy import select
 from app.core.database import SessionLocal
-from app.models import CloudProvider,HostingPlan,PricingSnapshot
+from app.core.config import settings
+from app.core.security import hash_password
+from app.models import CloudProvider,HostingPlan,PricingSnapshot,User,UserPreference,MLModelVersion
+from app.services.ml_service import CLASSIFIER_VERSION,MODEL_FEATURES
 
 def main():
     db=SessionLocal()
     try:
+        account=db.scalar(select(User).where(User.email==settings.seed_admin_email.lower()))
+        if not account:
+            account=User(full_name="Development User",email=settings.seed_admin_email.lower(),password_hash=hash_password(settings.seed_admin_password),role="USER",status="ACTIVE",is_verified=True)
+            db.add(account);db.flush();db.add(UserPreference(user_id=account.id,default_currency="USD"))
+
+        active_model=db.scalar(select(MLModelVersion).where(MLModelVersion.is_active.is_(True)))
+        bundled_model=db.scalar(select(MLModelVersion).where(MLModelVersion.version==CLASSIFIER_VERSION))
+        if not bundled_model:
+            bundled_model=MLModelVersion(version=CLASSIFIER_VERSION,algorithm="LogisticRegression",training_rows=5000,feature_schema={"features":MODEL_FEATURES,"target":"hosting_type","classes":["VPS","CLOUD_VM","KUBERNETES"]},accuracy=0.973333,recall=0.973333,f1=0.973369,confusion_matrix=[],class_distribution={},feature_importance={},is_active=active_model is None,model_path=settings.classifier_model_path)
+            db.add(bundled_model)
+        else:
+            bundled_model.model_path=settings.classifier_model_path
+            if active_model is None: bundled_model.is_active=True
+
         providers={}
         for name in ["DigitalOcean","Hetzner","AWS","Google Cloud","Azure","Vultr"]:
             p=db.scalar(select(CloudProvider).where(CloudProvider.name==name))
@@ -15,6 +32,6 @@ def main():
             exists=db.scalar(select(HostingPlan).where(HostingPlan.provider_id==providers[provider].id,HostingPlan.plan_name==name))
             if exists:continue
             hp=HostingPlan(provider_id=providers[provider].id,plan_name=name,architecture_type=arch,region=region,vcpu=vcpu,ram_gb=ram,storage_gb=storage,bandwidth_gb=bw or None,managed=arch=="KUBERNETES",high_availability_supported=arch!="VPS",autoscaling_supported=arch=="KUBERNETES",base_monthly_cost=lo,currency="USD",source="DEMO_SEED_NOT_LIVE",is_demo=True);db.add(hp);db.flush();db.add(PricingSnapshot(hosting_plan_id=hp.id,min_monthly_cost=lo,max_monthly_cost=hi,currency="USD",components={"note":"Illustrative stored demo range only; replace with verified provider data."},source="DEMO_SEED_NOT_LIVE"))
-        db.commit();print("Provider and pricing seed complete. Seed pricing is explicitly demo/non-live and USD-only.")
+        db.commit();print("Development account, bundled model metadata, and USD pricing seed complete. Pricing is explicitly demo/non-live.")
     finally:db.close()
 if __name__=="__main__":main()

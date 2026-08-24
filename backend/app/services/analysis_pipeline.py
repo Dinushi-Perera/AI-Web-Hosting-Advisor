@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 from app.models import Project, ProjectInput, AnalysisRun, AnalysisJob, TechnologyDetection, TechnologyEvidence, PerformanceAudit, WorkloadEstimate, Recommendation, RecommendationScore, Optimization, ModelPrediction, AuditLog
@@ -9,8 +10,11 @@ from app.services.workload_estimator import estimate as estimate_workload
 from app.services.recommendation_service import build as build_recommendation, technology_suggestion
 from app.services.optimization_service import generate as generate_optimizations
 from app.services.notification_service import create_notification
+from app.services.report_service import generate_report
 from app.core.exceptions import AppError
 from app.utils.enums import AnalysisStage
+
+logger = logging.getLogger(__name__)
 
 def utcnow(): return datetime.now(timezone.utc)
 ALL_STAGES=[s.value for s in AnalysisStage]
@@ -68,14 +72,14 @@ def process_analysis(db:Session,job_id:str):
         set_stage(db,j,"RULE_EVALUATION",4)
         set_stage(db,j,"ML_PREDICTION",5)
         set_stage(db,j,"PRICING_COMPARISON",6)
-        set_stage(db,j,"FINAL_SCORING",7); rec_data=build_recommendation(db,payload,workload,tech,perf,inp.completeness_score,p.target_region)
+        set_stage(db,j,"FINAL_SCORING",7); rec_data=build_recommendation(db,payload,workload,tech,perf,inp.completeness_score,p.target_region,p.mode)
         rec=Recommendation(project_id=p.id,analysis_run_id=run.id,recommended_option=rec_data["recommended_option"],overall_score=rec_data["overall_score"],confidence_value=rec_data["confidence"]["value"],confidence_label=rec_data["confidence"]["label"],resource_size=rec_data["resource_size"],estimated_cost=rec_data["estimated_cost"],alternatives=rec_data["alternatives"],reasons=rec_data["reasons"],assumptions=rec_data["assumptions"],warnings=rec_data["warnings"],rule_results=rec_data["rule_results"],model_version=rec_data["model_version"],model_probabilities=rec_data["model_probabilities"]); db.add(rec); db.flush()
         for s in rec_data["scores"]: db.add(RecommendationScore(recommendation_id=rec.id,**s))
-        db.add(ModelPrediction(analysis_run_id=run.id,predicted_class=rec_data["recommended_option"],probabilities=rec_data["model_probabilities"],features={"workload":workload},model_version_id=None)); db.commit()
+        db.add(ModelPrediction(analysis_run_id=run.id,predicted_class=rec_data["recommended_option"],probabilities=rec_data["model_probabilities"],features=rec_data["model_features"],model_version_id=rec_data["model_version_id"])); db.commit()
         set_stage(db,j,"CONFIDENCE_CALCULATION",8)
         set_stage(db,j,"OPTIMIZATION_GENERATION",9); opts=generate_optimizations(perf,tech,workload,rec_data["recommended_option"])
         for o in opts: db.add(Optimization(project_id=p.id,analysis_run_id=run.id,status="OPEN",**o))
-        db.commit(); set_stage(db,j,"REPORT_PREPARATION",10)
+        db.commit(); set_stage(db,j,"REPORT_PREPARATION",10); generate_report(db,p,p.user_id)
         j.status="COMPLETED"; j.progress=100; j.current_stage="REPORT_PREPARATION"; j.completed_at=utcnow(); j.stages_json=[{"name":x,"status":"COMPLETED"} for x in ALL_STAGES]; run.status="COMPLETED"; run.completed_at=utcnow(); p.status="COMPLETED"
         create_notification(db,p.user_id,"ANALYSIS_COMPLETED","Analysis completed",f"{p.title} is ready to review.",{"project_id":p.id,"job_id":j.id}); db.add(AuditLog(actor_user_id=p.user_id,action="ANALYSIS_COMPLETED",entity_type="PROJECT",entity_id=p.id,metadata_json={"job_id":j.id,"run_id":run.id})); db.commit(); return j
     except AppError as exc:
@@ -83,6 +87,9 @@ def process_analysis(db:Session,job_id:str):
             run.status="CANCELLED"; run.completed_at=utcnow(); p.status="CANCELLED"; db.commit(); return j
         j.status="FAILED"; j.error_code=exc.code; j.error_message=exc.message[:500]; j.completed_at=utcnow(); run.status="FAILED"; run.completed_at=utcnow(); p.status="FAILED"; create_notification(db,p.user_id,"ANALYSIS_FAILED","Analysis failed",exc.message,{"project_id":p.id,"job_id":j.id}); db.commit(); return j
     except Exception as exc:
+        db.rollback()
+        logger.exception("Analysis pipeline failed", extra={"job_id":job_id})
+        j=_job(db,job_id); p=db.get(Project,j.project_id); run=db.get(AnalysisRun,j.analysis_run_id)
         j.status="FAILED"; j.error_code="ANALYSIS_FAILED"; j.error_message="The analysis failed because an internal processing step could not complete."; j.completed_at=utcnow(); run.status="FAILED"; run.completed_at=utcnow(); p.status="FAILED"; create_notification(db,p.user_id,"ANALYSIS_FAILED","Analysis failed",j.error_message,{"project_id":p.id,"job_id":j.id}); db.commit(); return j
 
 def status_payload(j:AnalysisJob):

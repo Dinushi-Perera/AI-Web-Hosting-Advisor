@@ -24,9 +24,13 @@ def validate_public_url(url:str)->str:
     host=p.hostname.lower().rstrip(".")
     if host in BLOCKED_HOSTS or host.endswith(".local") or host.endswith(".internal"): raise AppError("URL_BLOCKED","Private, local and metadata endpoints are blocked.",400)
     if p.username or p.password: raise AppError("URL_BLOCKED","URLs containing credentials are blocked.",400)
-    try:
-        if not _safe_ip(host): raise AppError("URL_BLOCKED","Private or unsafe IP addresses are blocked.",400)
-    except ValueError: pass
+    # A normal DNS hostname is not an IP literal. Only apply literal-IP rules
+    # when ipaddress can actually parse the host; DNS answers are validated
+    # independently below to prevent private-address and rebinding targets.
+    try: literal_ip=ipaddress.ip_address(host)
+    except ValueError: literal_ip=None
+    if literal_ip is not None and not _safe_ip(str(literal_ip)):
+        raise AppError("URL_BLOCKED","Private or unsafe IP addresses are blocked.",400)
     ips=_host_ips(host)
     if not ips or any(not _safe_ip(ip) for ip in ips): raise AppError("URL_BLOCKED","The hostname resolves to a private or unsafe address.",400)
     port=p.port

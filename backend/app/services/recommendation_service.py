@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.services.rule_engine import evaluate
-from app.services.ml_service import predict
+from app.services.ml_service import build_model_features, predict, predict_resources
 from app.services.scoring_service import score_options, resource_size
 from app.services.pricing_service import PricingService
 from app.services.confidence_service import calculate
@@ -20,10 +20,11 @@ def cost_for_option(pricing:PricingService,option:str,resources:dict,region:str|
     warning="Stored demo pricing is being used; replace it with verified provider pricing before a purchase decision." if any(p.get("isDemo") for p in plans) else None
     return {"currency":"USD","min":round(lo,2),"max":round(hi,2),"pricing_updated_at":newest,"plans":plans[:3],"warning":warning}
 
-def build(db:Session,payload:dict,workload:dict,tech:list[dict],perf:list[dict],input_completeness:float,region:str|None=None):
+def build(db:Session,payload:dict,workload:dict,tech:list[dict],perf:list[dict],input_completeness:float,region:str|None=None,mode:str|None=None):
     rules=evaluate(payload,workload)
-    features={"expected_concurrent_users":workload.get("concurrent_users",0),"estimated_rps":workload.get("estimated_rps",0),"peak_rps":workload.get("peak_rps",0),"budget":payload.get("budget") or payload.get("monthly_budget") or 0,"app_type":payload.get("category") or payload.get("websiteType") or "OTHER","database_intensity":workload.get("database_intensity","MEDIUM"),"storage_gb":workload.get("storage_gb",0),"growth_rate":workload.get("growth_level","UNKNOWN"),"operational_skill":"ADVANCED" if payload.get("kubernetesSkill") else "BEGINNER"}
-    ml=predict(db,features,workload,payload); scores=score_options(workload,payload,ml,rules); winner=scores[0]["option"]; resources=resource_size(workload,payload); pricing=PricingService(db)
+    project_mode=str(mode or payload.get("project_mode") or payload.get("mode") or "PLANNED").upper()
+    features=build_model_features(payload,workload,tech,perf,project_mode)
+    ml=predict(db,features,workload,payload); scores=score_options(workload,payload,ml,rules); winner=scores[0]["option"]; resources=predict_resources(features,workload) or {**resource_size(workload,payload),"model_source":"RULE_FALLBACK","model_version":"RESOURCE_RULE_FALLBACK"}; pricing=PricingService(db)
     cost_map={o:cost_for_option(pricing,o,resources,region) for o in ["VPS","CLOUD_VM","KUBERNETES"]}
     price_fresh=pricing.freshness(sum([cost_map[o]["plans"] for o in cost_map],[]))
     ml_certainty=max(ml["probabilities"].values()) if ml.get("probabilities") else 0.3
@@ -38,7 +39,7 @@ def build(db:Session,payload:dict,workload:dict,tech:list[dict],perf:list[dict],
         c=cost_map[s["option"]]
         alternatives.append({"option":s["option"],"display_name":DISPLAY[s["option"]],"score":s["score"],"estimated_monthly_range":[c["min"],c["max"]],"currency":"USD","scalability":{"VPS":"Moderate","CLOUD_VM":"High","KUBERNETES":"Very High"}[s["option"]],"complexity":{"VPS":"Low","CLOUD_VM":"Medium","KUBERNETES":"High"}[s["option"]],"maintenance":{"VPS":"Manual","CLOUD_VM":"Flexible","KUBERNETES":"High"}[s["option"]],"availability":{"VPS":"Limited","CLOUD_VM":"Strong","KUBERNETES":"Excellent"}[s["option"]],"fit_reasons":[r["reason"] for r in rules if r["option"]==s["option"] and r["score_delta"]>0],"weaknesses":[r["reason"] for r in rules if r["option"]==s["option"] and r["score_delta"]<0]})
     reasons=[{"label":"Traffic fit","score":scores[0]["traffic_fit"],"note":"Derived from estimated peak requests per second."},{"label":"Budget fit","score":scores[0]["budget_fit"],"note":"Compared against the user-declared USD monthly budget."},{"label":"Scalability","score":scores[0]["scalability_fit"],"note":"Scores ability to handle expected growth without unnecessary complexity."},{"label":"Operational fit","score":scores[0]["operational_fit"],"note":"Accounts for the declared operational experience."}]
-    return {"recommended_option":winner,"overall_score":scores[0]["score"],"confidence":conf,"resource_size":resources,"estimated_cost":{k:v for k,v in cost_map[winner].items() if k!="plans" and k!="warning"},"alternatives":alternatives,"reasons":reasons,"assumptions":workload.get("assumptions",[]),"warnings":warnings,"rule_results":rules,"model_version":ml.get("model_version"),"model_probabilities":ml.get("probabilities",{}),"scores":scores,"provider_options":cost_map[winner]["plans"]}
+    return {"recommended_option":winner,"overall_score":scores[0]["score"],"confidence":conf,"resource_size":resources,"estimated_cost":{k:v for k,v in cost_map[winner].items() if k!="plans" and k!="warning"},"alternatives":alternatives,"reasons":reasons,"assumptions":workload.get("assumptions",[]),"warnings":warnings,"rule_results":rules,"model_version":ml.get("model_version"),"model_version_id":ml.get("model_version_id"),"model_features":features,"model_probabilities":ml.get("probabilities",{}),"scores":scores,"provider_options":cost_map[winner]["plans"]}
 
 def technology_suggestion(payload:dict):
     idea=(payload.get("idea") or payload.get("description") or "").lower(); features=" ".join(payload.get("features",[]) if isinstance(payload.get("features"),list) else [str(payload.get("features") or "")]).lower()

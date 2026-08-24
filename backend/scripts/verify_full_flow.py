@@ -3,7 +3,12 @@
 import os
 import sys
 import tempfile
+import warnings
 from pathlib import Path
+
+backend_root = Path(__file__).resolve().parents[1]
+if str(backend_root) not in sys.path:
+    sys.path.insert(0, str(backend_root))
 
 run_dir = Path(tempfile.mkdtemp(prefix="hosting-advisor-flow-"))
 report_dir = run_dir / "pdfs"
@@ -12,13 +17,16 @@ os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 os.environ["REPORT_STORAGE_DIR"] = str(report_dir)
 os.environ["JWT_SECRET"] = "full-flow-verification-secret-that-is-long-enough"
 os.environ["PASSWORD_RESET_RETURN_TOKEN"] = "true"
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_FROM_EMAIL"] = ""
+warnings.filterwarnings("ignore", message="Using `httpx` with `starlette.testclient` is deprecated")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from app.core.database import Base, engine, SessionLocal
 from app.core.security import verify_password
 from app.main import app
-from app.models import AuditLog, PasswordResetToken, User, UserPreference, UserSession
+from app.models import AuditLog, PasswordResetToken, User, UserPreference, UserSession, Recommendation, ModelPrediction
 
 Base.metadata.create_all(bind=engine)
 client = TestClient(app)
@@ -135,6 +143,13 @@ try:
 
     audit_actions = set(db.scalars(select(AuditLog.action).where(AuditLog.actor_user_id == stored_user.id)))
     assert {"REGISTER", "LOGIN", "PROFILE_UPDATE", "PREFERENCES_UPDATE", "PASSWORD_RESET_REQUEST", "PASSWORD_RESET"}.issubset(audit_actions)
+
+    recommendation = db.scalar(select(Recommendation).where(Recommendation.project_id == project_id))
+    prediction = db.scalar(select(ModelPrediction).where(ModelPrediction.analysis_run_id == recommendation.analysis_run_id))
+    assert recommendation.model_version == "hosting-classifier-selected-full5000"
+    assert recommendation.resource_size["model_source"] == "TRAINED_MODEL"
+    assert recommendation.resource_size["model_version"] == "resource-sizer-selected-full5000"
+    assert set(prediction.features) == set(__import__("app.services.ml_service", fromlist=["MODEL_FEATURES"]).MODEL_FEATURES)
 finally:
     db.close()
 

@@ -46,4 +46,7 @@ class ProjectService:
         if p.latest_analysis_run_id:
             perf=self.db.scalar(select(PerformanceAudit).where(PerformanceAudit.analysis_run_id==p.latest_analysis_run_id,PerformanceAudit.strategy=="MOBILE"))
             rec=self.db.scalar(select(Recommendation).where(Recommendation.analysis_run_id==p.latest_analysis_run_id))
-        return {"id":p.id,"name":p.title,"mode":mode_front(p.mode),"website":p.website_url,"status":status_front(p.status),"performanceScore":round(perf.performance_score) if perf and perf.performance_score is not None else None,"recommendation":{"VPS":"VPS","CLOUD_VM":"Cloud VM","KUBERNETES":"Kubernetes"}.get(rec.recommended_option) if rec else None,"costRange":[rec.estimated_cost.get("min"),rec.estimated_cost.get("max")] if rec and rec.estimated_cost else None,"confidence":round(rec.confidence_value*100) if rec else None,"currency":"USD","updatedAt":p.updated_at.isoformat()}
+        cost_min=rec.estimated_cost.get("min") if rec and rec.estimated_cost else None
+        cost_max=rec.estimated_cost.get("max") if rec and rec.estimated_cost else None
+        cost_range=[cost_min,cost_max] if cost_min is not None and cost_max is not None else None
+        return {"id":p.id,"name":p.title,"mode":mode_front(p.mode),"website":p.website_url,"status":status_front(p.status),"performanceScore":round(perf.performance_score) if perf and perf.performance_score is not None else None,"recommendation":{"VPS":"VPS","CLOUD_VM":"Cloud VM","KUBERNETES":"Kubernetes"}.get(rec.recommended_option) if rec else None,"costRange":cost_range,"confidence":round(rec.confidence_value*100) if rec else None,"currency":"USD","updatedAt":p.updated_at.isoformat()}

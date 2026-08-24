@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models import TestResult,MLModelVersion,Feedback
+from app.services.ml_service import bundled_model_status
 router=APIRouter(prefix="/testing",tags=["Testing"])
 @router.get("/summary")
 def summary(user=Depends(get_current_user),db:Session=Depends(get_db)):
@@ -12,9 +13,13 @@ def summary(user=Depends(get_current_user),db:Session=Depends(get_db)):
     return {"byType":counts,"results":[{"id":r.id,"testType":r.test_type,"testName":r.test_name,"status":r.status,"executedAt":r.executed_at.isoformat(),"durationMs":r.duration_ms,"details":r.details} for r in rows]}
 @router.get("/model-evaluation")
 def model_eval(user=Depends(get_current_user),db:Session=Depends(get_db)):
+    bundled=bundled_model_status()
     m=db.scalar(select(MLModelVersion).where(MLModelVersion.is_active.is_(True)).order_by(MLModelVersion.created_at.desc()))
-    if not m:return {"activeModel":None,"message":"No trained model is active. Recommendation uses deterministic fallback scoring."}
-    return {"activeModel":{"id":m.id,"version":m.version,"algorithm":m.algorithm,"accuracy":m.accuracy,"precision":m.precision,"recall":m.recall,"f1":m.f1,"confusionMatrix":m.confusion_matrix,"classDistribution":m.class_distribution}}
+    if not m:
+        classifier=bundled["classifier"]
+        active={"id":None,"version":classifier["version"],"algorithm":classifier["algorithm"],"accuracy":classifier["accuracy"],"precision":None,"recall":None,"f1":classifier["f1"],"confusionMatrix":[],"classDistribution":{},"source":"BUNDLED_ARTIFACT"} if classifier["available"] else None
+        return {"activeModel":active,"resourceModel":bundled["resource"],"message":None if active else "No trained model artifact is available. Recommendation uses deterministic fallback scoring."}
+    return {"activeModel":{"id":m.id,"version":m.version,"algorithm":m.algorithm,"accuracy":m.accuracy,"precision":m.precision,"recall":m.recall,"f1":m.f1,"confusionMatrix":m.confusion_matrix,"classDistribution":m.class_distribution,"source":"DATABASE_ACTIVE_MODEL"},"resourceModel":bundled["resource"]}
 @router.get("/uat/summary")
 def uat(user=Depends(get_current_user),db:Session=Depends(get_db)):
     rows=list(db.scalars(select(Feedback)))

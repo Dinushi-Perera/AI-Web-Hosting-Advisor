@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     pagespeed_cache_seconds: int = 900
     llm_enabled: bool = False
     openai_api_key: str | None = None
+    classifier_model_path: str = "models/classifier/production/hosting_classifier_SELECTED_full5000.joblib"
+    resource_model_path: str = "models/resource/production/resource_sizer_SELECTED_full5000.joblib"
+    seed_admin_email: str = "admin@hostingadvisor.local"
+    seed_admin_password: str = "Admin123!ChangeMe"
     max_load_test_vus: int = 500
     max_load_test_duration_seconds: int = 1800
     max_external_response_bytes: int = 2_000_000
