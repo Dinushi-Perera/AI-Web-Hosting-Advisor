@@ -874,9 +874,9 @@ CREATE TABLE IF NOT EXISTS recommendations (
     recommended_hosting_type VARCHAR(30) GENERATED ALWAYS AS (recommended_option) STORED,
     confidence_score DECIMAL(6,5) GENERATED ALWAYS AS (confidence_value) STORED,
     estimated_min_monthly_cost_usd DECIMAL(12,2)
-      GENERATED ALWAYS AS (CAST(JSON_UNQUOTE(JSON_EXTRACT(estimated_cost, '$.min')) AS DECIMAL(12,2))) STORED,
+      GENERATED ALWAYS AS (CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(estimated_cost, '$.min')), 'null') AS DECIMAL(12,2))) STORED,
     estimated_max_monthly_cost_usd DECIMAL(12,2)
-      GENERATED ALWAYS AS (CAST(JSON_UNQUOTE(JSON_EXTRACT(estimated_cost, '$.max')) AS DECIMAL(12,2))) STORED,
+      GENERATED ALWAYS AS (CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(estimated_cost, '$.max')), 'null') AS DECIMAL(12,2))) STORED,
     pricing_snapshot_date DATETIME(6) NULL,
     user_preferred_hosting_type VARCHAR(30) NULL,
     is_current TINYINT NOT NULL DEFAULT 1,
