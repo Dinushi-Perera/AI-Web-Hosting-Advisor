@@ -1,4 +1,5 @@
 import json,time
+from datetime import datetime,timezone
 from fastapi import APIRouter,Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -11,21 +12,31 @@ from app.services.url_security_service import safe_fetch
 from app.services.project_service import ProjectService
 from app.services.analysis_pipeline import start_analysis,status_payload
 from app.workers.analysis_tasks import enqueue_analysis
-from app.models import AnalysisJob,Project
+from app.models import AnalysisJob,Project,ProjectClarification
+from app.services.clarification_service import questions,apply_answers
 router=APIRouter(prefix="/analysis",tags=["Analysis"])
 @router.post("/check-url")
 @router.post("/check-website")
 def check_url(req:URLCheckRequest,user=Depends(get_current_user)):
     r=safe_fetch(req.url,max_bytes=64_000); return {"reachable":200<=r["status_code"]<500,"status_code":r["status_code"],"normalized_url":r["url"],"response_time_ms":r["response_time_ms"]}
-def _launch(db,user,mode,title,payload):
-    p=ProjectService(db).create(user.id,mode,title,payload,"DRAFT"); j=start_analysis(db,p); enqueue_analysis(j.id); return {"id":p.id,"projectId":p.id,"jobId":j.id,"job_id":j.id,"status":"QUEUED","currency":"USD"}
+def _launch(db,user,mode,title,payload,asked_questions=None):
+    p=ProjectService(db).create(user.id,mode,title,payload,"DRAFT")
+    answers=payload.get("clarifications") if isinstance(payload.get("clarifications"),dict) else {}
+    for item in asked_questions or []:
+        answer=answers.get(item["key"])
+        db.add(ProjectClarification(project_id=p.id,question_key=item["key"],question_text=item["question"],input_type=item["input_type"],answer_value=None if answer in (None,"") else str(answer),answered_at=datetime.now(timezone.utc) if answer not in (None,"") else None))
+    if asked_questions:db.commit()
+    j=start_analysis(db,p); enqueue_analysis(j.id); return {"id":p.id,"projectId":p.id,"jobId":j.id,"job_id":j.id,"status":"QUEUED","currency":"USD"}
 @router.post("/live",status_code=202)
 def start_live(req:LiveFrontendRequest,user=Depends(get_current_user),db:Session=Depends(get_db)): return _launch(db,user,"LIVE_URL",req.projectName,req.model_dump())
 @router.post("/planned",status_code=202)
 def start_planned(req:PlannedFrontendRequest,user=Depends(get_current_user),db:Session=Depends(get_db)): return _launch(db,user,"PLANNED",req.projectName,req.model_dump())
 @router.post("/idea",status_code=202)
 def start_idea(req:IdeaFrontendRequest,user=Depends(get_current_user),db:Session=Depends(get_db)):
-    data=req.model_dump(); title=req.projectName or (req.idea or req.description or "New Development Idea")[:100]; return _launch(db,user,"NEW_IDEA",title,data)
+    data=req.model_dump(); asked=questions(data); data=apply_answers(data); title=req.projectName or (req.idea or req.description or "New Development Idea")[:100]; return _launch(db,user,"NEW_IDEA",title,data,asked)
+@router.post("/clarification-questions")
+def clarification_questions(payload:dict,user=Depends(get_current_user)):
+    return {"questions":questions(payload)}
 @router.get("/jobs/{job_id}")
 def job_status(job_id:str,user=Depends(get_current_user),db:Session=Depends(get_db)):
     j=db.get(AnalysisJob,job_id)

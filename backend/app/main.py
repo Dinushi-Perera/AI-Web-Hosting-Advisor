@@ -1,11 +1,11 @@
-import time,uuid
+import logging,time,uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI,Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import Counter,Histogram,generate_latest,CONTENT_TYPE_LATEST
-from starlette.responses import Response
+from starlette.responses import RedirectResponse,Response
 from app.core.config import settings
 from app.core.database import Base,engine
 from app.core.exceptions import AppError
@@ -15,6 +15,7 @@ from app.core.health import readiness
 from app.api.v1 import auth,users,projects,analysis,technology,performance,workload,load_tests,recommendations,pricing,optimizations,reports,notifications,feedback,dashboard,tests_dashboard
 REQUESTS=Counter("hosting_advisor_http_requests_total","HTTP requests",["method","path","status"])
 LATENCY=Histogram("hosting_advisor_http_request_duration_seconds","HTTP latency",["method","path"])
+logger=logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app:FastAPI):
     configure_logging();settings.ensure_storage()
@@ -45,7 +46,16 @@ async def app_error(request:Request,exc:AppError):return JSONResponse(status_cod
 @app.exception_handler(RequestValidationError)
 async def validation_error(request:Request,exc:RequestValidationError):return JSONResponse(status_code=422,content={"success":False,"message":"Validation failed.","code":"VALIDATION_ERROR","data":None,"error":{"code":"VALIDATION_ERROR","details":exc.errors()},"requestId":getattr(request.state,"request_id",None)})
 @app.exception_handler(Exception)
-async def unhandled(request:Request,exc:Exception):return JSONResponse(status_code=500,content={"success":False,"message":"An internal error occurred.","code":"INTERNAL_ERROR","data":None,"error":{"code":"INTERNAL_ERROR"},"requestId":getattr(request.state,"request_id",None)})
+async def unhandled(request:Request,exc:Exception):
+    logger.exception("Unhandled API error on %s",request.url.path)
+    details=str(exc) if settings.app_env.lower()=="development" else None
+    return JSONResponse(status_code=500,content={"success":False,"message":"An internal error occurred.","code":"INTERNAL_ERROR","data":None,"error":{"code":"INTERNAL_ERROR","details":details},"requestId":getattr(request.state,"request_id",None)})
+@app.get("/",include_in_schema=False)
+def root():return RedirectResponse(url=app.docs_url or "/docs")
+@app.get("/doc",include_in_schema=False)
+def doc_alias():return RedirectResponse(url=app.docs_url or "/docs")
+@app.get("/favicon.ico",include_in_schema=False)
+def favicon():return Response(status_code=204)
 @app.get("/health",tags=["Health"])
 def health():return {"status":"ok","service":settings.app_name}
 @app.get("/health/ready",tags=["Health"])

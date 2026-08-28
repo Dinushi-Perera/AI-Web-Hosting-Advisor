@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const protectedPrefixes=["/dashboard","/projects","/analyze","/reports","/notifications","/settings","/testing","/cost","/demo-showcase"];
+const protectedPrefixes=["/dashboard","/projects","/analyze","/reports","/notifications","/settings","/testing","/performance","/load-testing","/cost","/demo-showcase"];
 
 export function proxy(request:NextRequest){
   if(process.env.NEXT_PUBLIC_AUTH_REQUIRED==="false")return NextResponse.next();

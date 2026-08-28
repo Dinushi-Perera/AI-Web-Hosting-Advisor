@@ -1,6 +1,8 @@
+FROM grafana/k6:2.2.0 AS k6-runtime
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
+COPY --from=k6-runtime /usr/bin/k6 /usr/local/bin/k6
 RUN useradd -m -u 10001 appuser
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

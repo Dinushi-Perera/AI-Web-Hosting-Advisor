@@ -8,7 +8,7 @@ from app.core.exceptions import AppError
 from app.models import PerformanceAudit
 router=APIRouter(tags=["Performance"])
 def one(a):
-    m=a.metrics_json or {}; return {"performance_score":a.performance_score,"accessibility_score":a.accessibility_score,"best_practices_score":a.best_practices_score,"seo_score":a.seo_score,"metrics":m,"status":a.status,"warning":a.warning,"audit_id":a.id,"audited_at":a.audited_at.isoformat()}
+    m=a.metrics_json or {}; return {"performance_score":a.performance_score,"accessibility_score":a.accessibility_score,"best_practices_score":a.best_practices_score,"seo_score":a.seo_score,"metrics":m,"core_web_vitals":m.get("core_web_vitals",{}),"lab_metrics":m.get("lab_metrics",{}),"field_data":m.get("field_data",{}),"opportunities":m.get("opportunities",[]),"metric_sources":m.get("metric_sources",{}),"status":a.status,"source":a.source,"warning":a.warning,"audit_id":a.id,"audited_at":a.audited_at.isoformat()}
 @router.get("/projects/{project_id}/performance")
 def performance(project_id:str,run_id:str|None=Query(None),user=Depends(get_current_user),db:Session=Depends(get_db)):
     p=owned_project(db,project_id,user); rid=run_id_for(p,run_id); rows=list(db.scalars(select(PerformanceAudit).where(PerformanceAudit.analysis_run_id==rid)))

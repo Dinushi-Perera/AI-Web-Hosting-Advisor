@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/junit.xml",
+    "ci": "npm run lint && npm run typecheck && npm run test:ci && npm run build"
   },
   "dependencies": {
     "@hookform/resolvers": "latest",
@@ -36,6 +40,7 @@
     "react-hook-form": "latest",
     "react-syntax-highlighter": "latest",
     "recharts": "latest",
+    "reicon-react": "^1.2.0",
     "sonner": "latest",
     "tailwind-merge": "latest",
     "zod": "latest",
@@ -43,14 +48,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/react-syntax-highlighter": "latest",
+    "@vitejs/plugin-react": "^6.1.1",
     "eslint": "latest",
     "eslint-config-next": "latest",
+    "jsdom": "^30.0.1",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest"
+    "typescript": "6.0.3",
+    "vitest": "^4.1.11"
   }
 }

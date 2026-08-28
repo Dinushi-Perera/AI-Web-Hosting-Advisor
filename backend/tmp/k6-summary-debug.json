@@ -1,0 +1,201 @@
+{
+    "config": {
+        "duration": 0.0156326,
+        "execution": "local",
+        "script": "/* AI Web Hosting Advisor server-generated scenario. */\nimport http from 'k6/http';\nimport { check } from 'k6';\n\nexport const options = {\n  vus: 1,\n  iterations: 1,\n  thresholds: { checks: ['rate>0'] },\n};\n\nexport default function () {\n  const response = http.get('https://www.hirunews.lk/');\n  check(response, { 'status is successful': (r) => r.status >= 200 && r.status < 400 });\n}\n"
+    },
+    "metadata": {
+        "generated_at": "2026-08-26T17:01:02.9701301+05:30",
+        "k6_version": "2.2.0"
+    },
+    "results": {
+        "checks": {
+            "metrics": [
+                {
+                    "contains": "default",
+                    "name": "checks_total",
+                    "type": "counter",
+                    "values": {
+                        "count": 1
+                    }
+                },
+                {
+                    "contains": "default",
+                    "name": "checks_failed",
+                    "type": "rate",
+                    "values": {
+                        "matches": 1,
+                        "rate": 1,
+                        "total": 1
+                    }
+                },
+                {
+                    "contains": "default",
+                    "name": "checks_succeeded",
+                    "type": "rate",
+                    "values": {
+                        "matches": 0,
+                        "rate": 0,
+                        "total": 1
+                    }
+                }
+            ],
+            "results": [
+                {
+                    "fails": 1,
+                    "name": "status is successful",
+                    "passes": 0
+                }
+            ]
+        },
+        "metrics": [
+            {
+                "contains": "time",
+                "name": "http_req_receiving",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "default",
+                "name": "http_req_failed",
+                "type": "rate",
+                "values": {
+                    "matches": 1,
+                    "rate": 1,
+                    "total": 1
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_blocked",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_connecting",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_sending",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_tls_handshaking",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_waiting",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "default",
+                "name": "http_reqs",
+                "type": "counter",
+                "values": {
+                    "count": 1
+                }
+            },
+            {
+                "contains": "time",
+                "name": "http_req_duration",
+                "type": "trend",
+                "values": {
+                    "avg": 0,
+                    "max": 0,
+                    "med": 0,
+                    "min": 0,
+                    "p90": 0,
+                    "p95": 0
+                }
+            },
+            {
+                "contains": "time",
+                "name": "iteration_duration",
+                "type": "trend",
+                "values": {
+                    "avg": 15.0896,
+                    "max": 15.0896,
+                    "med": 15.0896,
+                    "min": 15.0896,
+                    "p90": 15.0896,
+                    "p95": 15.0896
+                }
+            },
+            {
+                "contains": "default",
+                "name": "iterations",
+                "type": "counter",
+                "values": {
+                    "count": 1
+                }
+            },
+            {
+                "contains": "data",
+                "name": "data_received",
+                "type": "counter",
+                "values": {
+                    "count": 0
+                }
+            },
+            {
+                "contains": "data",
+                "name": "data_sent",
+                "type": "counter",
+                "values": {
+                    "count": 0
+                }
+            }
+        ]
+    },
+    "version": "1.0.0"
+}

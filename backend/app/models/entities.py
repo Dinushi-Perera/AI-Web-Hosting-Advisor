@@ -26,7 +26,6 @@ class User(Base, TimestampMixin):
     locked_until: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_key: Mapped[str|None] = mapped_column(String(255), nullable=True)
     experience_level: Mapped[str] = mapped_column(String(30), default="BEGINNER")
-    default_region: Mapped[str] = mapped_column(String(80), default="Sri Lanka")
     timezone: Mapped[str] = mapped_column(String(80), default="Asia/Colombo")
 
 class UserPreference(Base, TimestampMixin):
@@ -34,8 +33,6 @@ class UserPreference(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     theme: Mapped[str] = mapped_column(String(20), default="SYSTEM")
-    default_currency: Mapped[str] = mapped_column(String(3), default="USD")
-    default_region: Mapped[str] = mapped_column(String(80), default="Sri Lanka")
     timezone: Mapped[str] = mapped_column(String(80), default="Asia/Colombo")
     chart_animations: Mapped[bool] = mapped_column(Boolean, default=True)
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -74,7 +71,6 @@ class Project(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
     website_url: Mapped[str|None] = mapped_column(String(2048), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
-    target_region: Mapped[str|None] = mapped_column(String(80), nullable=True)
     latest_analysis_run_id: Mapped[str|None] = mapped_column(String(36), nullable=True)
     user_preferred_option: Mapped[str|None] = mapped_column(String(30), nullable=True)
     recommendation_stale: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -88,6 +84,18 @@ class ProjectInput(Base, TimestampMixin):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), unique=True, index=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     completeness_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+class ProjectClarification(Base):
+    __tablename__="project_clarifications"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    analysis_run_id: Mapped[str|None] = mapped_column(String(36), nullable=True, index=True)
+    question_key: Mapped[str] = mapped_column(String(120))
+    question_text: Mapped[str] = mapped_column(Text)
+    input_type: Mapped[str] = mapped_column(String(40))
+    answer_value: Mapped[str|None] = mapped_column(Text, nullable=True)
+    answered_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 class AnalysisRun(Base):
     __tablename__="analysis_runs"
@@ -185,6 +193,91 @@ class LoadTestPlan(Base, TimestampMixin):
     script: Mapped[Text] = mapped_column(Text)
     file_key: Mapped[str|None] = mapped_column(String(255), nullable=True)
     safety_notes: Mapped[list] = mapped_column(JSON, default=list)
+    analysis_run_id: Mapped[str|None] = mapped_column(ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    public_id: Mapped[str] = mapped_column(String(36), unique=True, default=uuid4str, index=True)
+    authorization_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    risk_acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    expected_concurrent_users: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    estimated_rps: Mapped[float|None] = mapped_column(Float, nullable=True)
+    peak_rps: Mapped[float|None] = mapped_column(Float, nullable=True)
+    recommended_hosting: Mapped[str|None] = mapped_column(String(30), nullable=True)
+    recommended_vcpu: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    recommended_ram_gb: Mapped[float|None] = mapped_column(Float, nullable=True)
+    confidence: Mapped[float|None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="GENERATED", index=True)
+    generator_version: Mapped[str] = mapped_column(String(40), default="k6-generator-1.0.0")
+    workload_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    ai_recommendation_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    downloaded_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class LoadTestStage(Base):
+    __tablename__="load_test_stages"
+    __table_args__=(UniqueConstraint("load_test_plan_id","stage_order",name="uq_load_test_stage_order"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
+    load_test_plan_id: Mapped[str] = mapped_column(ForeignKey("load_test_plans.id", ondelete="CASCADE"), index=True)
+    stage_order: Mapped[int] = mapped_column(Integer)
+    duration_seconds: Mapped[int] = mapped_column(Integer)
+    target_virtual_users: Mapped[int] = mapped_column(Integer)
+    stage_type: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class LoadTestResult(Base):
+    __tablename__="load_test_results"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
+    public_id: Mapped[str] = mapped_column(String(36), unique=True, default=uuid4str, index=True)
+    load_test_plan_id: Mapped[str] = mapped_column(ForeignKey("load_test_plans.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    analysis_run_id: Mapped[str|None] = mapped_column(ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="K6_SUMMARY_JSON")
+    started_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_requests: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    total_iterations: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    average_rps: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_avg_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_min_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_max_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_p50_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_p90_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_p95_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_duration_p99_ms: Mapped[float|None] = mapped_column(Float, nullable=True)
+    http_req_failed_rate: Mapped[float|None] = mapped_column(Float, nullable=True)
+    checks_passed: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    checks_failed: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    data_received_bytes: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    data_sent_bytes: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    peak_vus: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    thresholds_passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    overall_status: Mapped[str] = mapped_column(String(30), default="INVALID", index=True)
+    ai_validation_status: Mapped[str] = mapped_column(String(40), default="INSUFFICIENT_EVIDENCE")
+    analysis_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    raw_summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class LoadTestEnvironment(Base, TimestampMixin):
+    __tablename__="load_test_environments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
+    load_test_plan_id: Mapped[str] = mapped_column(ForeignKey("load_test_plans.id", ondelete="CASCADE"), unique=True, index=True)
+    hosting_type: Mapped[str|None] = mapped_column(String(40), nullable=True)
+    vcpu: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    ram_gb: Mapped[float|None] = mapped_column(Float, nullable=True)
+    database_type: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    cdn_enabled: Mapped[bool|None] = mapped_column(Boolean, nullable=True)
+    notes: Mapped[str|None] = mapped_column(String(1000), nullable=True)
+
+class LoadTestResourceMetric(Base):
+    __tablename__="load_test_resource_metrics"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
+    load_test_result_id: Mapped[str] = mapped_column(ForeignKey("load_test_results.id", ondelete="CASCADE"), unique=True, index=True)
+    cpu_peak_percent: Mapped[float|None] = mapped_column(Float, nullable=True)
+    cpu_avg_percent: Mapped[float|None] = mapped_column(Float, nullable=True)
+    ram_peak_percent: Mapped[float|None] = mapped_column(Float, nullable=True)
+    ram_avg_percent: Mapped[float|None] = mapped_column(Float, nullable=True)
+    database_cpu_peak_percent: Mapped[float|None] = mapped_column(Float, nullable=True)
+    database_connections_peak: Mapped[int|None] = mapped_column(Integer, nullable=True)
+    server_load_average: Mapped[float|None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str|None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 class CloudProvider(Base, TimestampMixin):
     __tablename__="cloud_providers"
@@ -195,12 +288,10 @@ class CloudProvider(Base, TimestampMixin):
 
 class HostingPlan(Base, TimestampMixin):
     __tablename__="hosting_plans"
-    __table_args__=(Index("ix_hosting_provider_region","provider_id","region"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4str)
     provider_id: Mapped[str] = mapped_column(ForeignKey("cloud_providers.id", ondelete="CASCADE"), index=True)
     plan_name: Mapped[str] = mapped_column(String(160))
     architecture_type: Mapped[str] = mapped_column(String(30), index=True)
-    region: Mapped[str] = mapped_column(String(80), index=True)
     vcpu: Mapped[int] = mapped_column(Integer)
     ram_gb: Mapped[float] = mapped_column(Float)
     storage_gb: Mapped[float] = mapped_column(Float)
@@ -242,6 +333,11 @@ class Recommendation(Base):
     rule_results: Mapped[list] = mapped_column(JSON, default=list)
     model_version: Mapped[str|None] = mapped_column(String(60), nullable=True)
     model_probabilities: Mapped[dict] = mapped_column(JSON, default=dict)
+    decision_evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    cost_optimization: Mapped[dict] = mapped_column(JSON, default=dict)
+    llm_explanation: Mapped[dict] = mapped_column(JSON, default=dict)
+    llm_status: Mapped[str] = mapped_column(String(30), default="NOT_CONFIGURED")
+    llm_model: Mapped[str|None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 class RecommendationScore(Base):

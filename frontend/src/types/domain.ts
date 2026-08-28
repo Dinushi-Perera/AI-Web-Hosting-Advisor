@@ -8,8 +8,7 @@ export interface User {
   email: string;
   role: "user";
   experienceLevel: "Beginner" | "Intermediate" | "Advanced";
-  defaultRegion: string;
-  currency: string;
+  currency: "USD";
   timezone: string;
   avatar?: string | null;
   avatarUrl?: string | null;
@@ -90,7 +89,6 @@ export interface PricingPlan {
   id: string;
   provider: string;
   plan: string;
-  region: string;
   vcpu: number;
   ramGb: number;
   storageGb: number;

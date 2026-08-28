@@ -9,7 +9,7 @@ from app.api.v1.helpers import owned_project
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.exceptions import AppError
-from app.models import Report
+from app.models import Report,AuditLog,Notification
 from app.services.report_service import generate_report
 router=APIRouter(tags=["Reports"])
 def rj(r):
@@ -47,4 +47,4 @@ def delete_report(report_id:str,user=Depends(get_current_user),db:Session=Depend
     if not r or r.deleted_at or r.user_id!=user.id: raise AppError("REPORT_NOT_FOUND","Report not found.",404)
     path=Path(settings.report_storage_dir)/Path(r.file_key or "").name
     if path.exists(): path.unlink()
-    r.deleted_at=datetime.now(timezone.utc); db.commit(); return {"success":True}
+    r.deleted_at=datetime.now(timezone.utc);db.add(AuditLog(actor_user_id=user.id,action="REPORT_DELETED",entity_type="PROJECT",entity_id=r.project_id,metadata_json={"report_id":r.id,"version":r.version}));db.add(Notification(user_id=user.id,type="REPORT_DELETED",title="Report removed",message=f"Report version {r.version} was removed.",data={"project_id":r.project_id,"report_id":r.id}));db.commit(); return {"success":True}

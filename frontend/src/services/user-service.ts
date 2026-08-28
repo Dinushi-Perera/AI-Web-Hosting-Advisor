@@ -3,8 +3,7 @@ import type { User } from "@/types/domain";
 
 export type UserPreferences = {
   theme: "light" | "dark" | "system";
-  defaultCurrency: "USD";
-  defaultRegion: string;
+  currency: "USD";
   timezone: string;
   chartAnimations: boolean;
   emailNotifications: boolean;

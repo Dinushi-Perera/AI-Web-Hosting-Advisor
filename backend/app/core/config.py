@@ -31,13 +31,36 @@ class Settings(BaseSettings):
     pagespeed_api_key: str | None = None
     pagespeed_cache_seconds: int = 900
     llm_enabled: bool = False
-    openai_api_key: str | None = None
-    classifier_model_path: str = "models/classifier/production/hosting_classifier_SELECTED_full5000.joblib"
-    resource_model_path: str = "models/resource/production/resource_sizer_SELECTED_full5000.joblib"
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "z-ai/glm-5.2:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_timeout_seconds: float = 30.0
+    openrouter_max_tokens: int = 1200
+    openrouter_retry_attempts: int = 3
+    openrouter_http_referer: str | None = None
+    openrouter_app_title: str = "AI Web Hosting Advisor"
+    classifier_model_path: str = "models/classifier/production/LogisticRegression_full5000.joblib"
+    resource_model_path: str = "models/resource/production/RandomForestRegressor_full5000.joblib"
     seed_admin_email: str = "admin@hostingadvisor.local"
     seed_admin_password: str = "Admin123!ChangeMe"
-    max_load_test_vus: int = 500
-    max_load_test_duration_seconds: int = 1800
+    k6_max_vus: int = 500
+    k6_max_duration_seconds: int = 1800
+    k6_default_p95_threshold_ms: int = 2000
+    k6_default_error_rate_threshold: float = 0.01
+    k6_max_redirects: int = 5
+    k6_allow_stress_test: bool = True
+    k6_allow_spike_test: bool = True
+    k6_allow_soak_test: bool = True
+    k6_result_max_file_mb: int = 5
+    k6_plan_generation_limit_per_hour: int = 20
+    k6_result_import_limit_per_hour: int = 20
+    k6_binary_path: str = "k6"
+    k6_default_p99_threshold_ms: int = 4000
+    k6_default_check_pass_rate: float = 0.99
+    managed_load_test_max_concurrency: int = 10
+    managed_load_test_max_duration_seconds: int = 120
+    managed_load_test_run_limit_per_hour: int = 10
+    managed_load_test_execution_timeout_seconds: int = 120
     max_external_response_bytes: int = 2_000_000
     max_redirects: int = 3
     http_connect_timeout: float = 5.0
@@ -46,7 +69,6 @@ class Settings(BaseSettings):
     load_test_storage_dir: str = "storage/load_tests"
     log_level: str = "INFO"
     pricing_stale_days: int = 30
-    default_currency: str = "USD"
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
     auto_create_tables: bool = False
@@ -59,13 +81,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [x.strip() for x in v.split(",") if x.strip()]
         return v
-
-    @field_validator("default_currency")
-    @classmethod
-    def usd_only(cls, v: str):
-        if v.upper() != "USD":
-            raise ValueError("This project is configured for USD only")
-        return "USD"
 
     def ensure_storage(self):
         Path(self.report_storage_dir).mkdir(parents=True, exist_ok=True)

@@ -7,7 +7,10 @@ backend/.venv/
 backend/venv/
 backend/__pycache__/
 backend/.pytest_cache/
+backend/test-results/
+frontend/test-results/
 backend/storage/reports/*
 backend/storage/load_tests/*
+load_tests/*-result.json
 !backend/storage/reports/.gitkeep
 !backend/storage/load_tests/.gitkeep

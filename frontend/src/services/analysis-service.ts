@@ -8,6 +8,7 @@ export const analysisService = {
   startLive: (payload: unknown) => apiClient.post("/analysis/live", payload, { timeout: 120_000 }).then(r => r.data),
   startPlanned: (payload: unknown) => apiClient.post("/analysis/planned", payload, { timeout: 120_000 }).then(r => r.data),
   startIdea: (payload: unknown) => apiClient.post("/analysis/idea", payload, { timeout: 120_000 }).then(r => r.data),
+  clarifications: (payload: unknown) => apiClient.post("/analysis/clarification-questions", payload).then(r => r.data),
   status: (jobId: string) => apiClient.get(`/analysis/jobs/${jobId}`).then(r => r.data),
   cancel: (jobId: string) => apiClient.post(`/analysis/jobs/${jobId}/cancel`).then(r => r.data),
 };

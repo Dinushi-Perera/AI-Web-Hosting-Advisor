@@ -5,7 +5,7 @@ from app.api.deps import get_current_user
 from app.api.v1.helpers import owned_project,run_id_for
 from app.core.database import get_db
 from app.core.exceptions import AppError
-from app.models import Optimization,Project
+from app.models import Optimization,Project,AuditLog,Notification
 from app.schemas.analysis import OptimizationStatusRequest
 router=APIRouter(tags=["Optimizations"])
 def oj(o): return {"id":o.id,"priority":o.priority.title(),"category":o.category.replace("_"," ").title(),"title":o.title,"explanation":o.explanation,"impact":o.impact,"difficulty":o.difficulty.title(),"benefit":o.benefit,"status":o.status.replace("_"," ").title(),"steps":o.steps}
@@ -25,4 +25,4 @@ def patch_status(optimization_id:str,req:OptimizationStatusRequest,user=Depends(
     if p.user_id!=user.id: raise AppError("FORBIDDEN","You do not have access to this optimization.",403)
     st=req.status.upper().replace(" ","_")
     if st not in {"OPEN","DONE","NOT_RELEVANT"}: raise AppError("VALIDATION_ERROR","Invalid optimization status.",422)
-    o.status=st; db.commit(); return oj(o)
+    o.status=st;db.add(AuditLog(actor_user_id=user.id,action="OPTIMIZATION_STATUS_UPDATED",entity_type="PROJECT",entity_id=p.id,metadata_json={"optimization_id":o.id,"status":st,"title":o.title}));db.add(Notification(user_id=user.id,type="OPTIMIZATION_UPDATED",title="Optimization plan updated",message=f"{o.title}: {st.replace('_',' ').title()}",data={"project_id":p.id,"optimization_id":o.id,"status":st}));db.commit(); return oj(o)

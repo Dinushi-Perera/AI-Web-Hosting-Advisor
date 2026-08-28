@@ -13,7 +13,7 @@ USE ai_web_hosting_advisor;
 
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) NOT NULL,
-    public_id VARCHAR(36) GENERATED ALWAYS AS (id) STORED,
+    public_id VARCHAR(36) NOT NULL,
     full_name VARCHAR(120) NOT NULL,
     email VARCHAR(254) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS users (
     locked_until DATETIME(6) NULL,
     avatar_key VARCHAR(255) NULL,
     experience_level VARCHAR(30) NOT NULL DEFAULT 'BEGINNER',
-    default_region VARCHAR(80) NOT NULL DEFAULT 'Sri Lanka',
     timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Colombo',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -48,10 +47,6 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     id VARCHAR(36) NOT NULL,
     user_id VARCHAR(36) NOT NULL,
     theme VARCHAR(20) NOT NULL DEFAULT 'SYSTEM',
-    -- Retained because the supplied backend ORM reads/writes this column.
-    -- Database constraint guarantees USD-only behavior.
-    default_currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    default_region VARCHAR(80) NOT NULL DEFAULT 'Sri Lanka',
     timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Colombo',
     chart_animations TINYINT NOT NULL DEFAULT 1,
     email_notifications TINYINT NOT NULL DEFAULT 1,
@@ -62,8 +57,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     PRIMARY KEY (id),
     UNIQUE KEY uq_user_preferences_user (user_id),
     CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT ck_user_preferences_theme CHECK (theme IN ('LIGHT','DARK','SYSTEM')),
-    CONSTRAINT ck_user_preferences_currency CHECK (default_currency = 'USD')
+    CONSTRAINT ck_user_preferences_theme CHECK (theme IN ('LIGHT','DARK','SYSTEM'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -119,7 +113,6 @@ CREATE TABLE IF NOT EXISTS projects (
     website_category VARCHAR(80) NULL,
     -- Retained for backend API compatibility; strictly USD-only.
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    target_region VARCHAR(80) NULL,
     description TEXT NULL,
     latest_analysis_run_id VARCHAR(36) NULL,
     user_preferred_option VARCHAR(30) NULL,
@@ -157,7 +150,6 @@ CREATE TABLE IF NOT EXISTS project_inputs (
     website_url VARCHAR(2048) NULL,
     normalized_url VARCHAR(2048) NULL,
     target_users_description TEXT NULL,
-    target_region VARCHAR(80) NULL,
     expected_launch_date DATE NULL,
     frontend_framework VARCHAR(120) NULL,
     backend_framework VARCHAR(120) NULL,
@@ -184,7 +176,6 @@ CREATE TABLE IF NOT EXISTS project_inputs (
     required_uptime DECIMAL(6,3) NULL,
     automatic_backups_required TINYINT NULL,
     disaster_recovery_required TINYINT NULL,
-    multi_region_required TINYINT NULL,
     autoscaling_required TINYINT NULL,
     monitoring_required TINYINT NULL,
     monthly_budget_usd DECIMAL(12,2) NULL,
@@ -200,7 +191,6 @@ CREATE TABLE IF NOT EXISTS project_inputs (
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_project_inputs_project (project_id),
-    KEY ix_project_inputs_target_region (target_region),
     KEY ix_project_inputs_launch_date (expected_launch_date),
     CONSTRAINT fk_project_inputs_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     CONSTRAINT ck_project_inputs_completeness CHECK (completeness_score BETWEEN 0 AND 1),
@@ -588,9 +578,6 @@ CREATE TABLE IF NOT EXISTS hosting_plans (
     plan_code VARCHAR(120) NULL,
     plan_name VARCHAR(160) NOT NULL,
     architecture_type VARCHAR(30) NOT NULL,
-    region VARCHAR(80) NOT NULL,
-    region_code VARCHAR(80) NULL,
-    region_name VARCHAR(120) NULL,
     vcpu INT UNSIGNED NOT NULL,
     ram_gb DECIMAL(10,2) NOT NULL,
     storage_gb DECIMAL(12,2) NOT NULL,
@@ -608,12 +595,10 @@ CREATE TABLE IF NOT EXISTS hosting_plans (
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_hosting_plan_public_id (public_id),
-    UNIQUE KEY uq_hosting_plan_code (provider_id, plan_code, region),
+    UNIQUE KEY uq_hosting_plan_code (provider_id, plan_code),
     KEY ix_hosting_provider (provider_id),
     KEY ix_hosting_architecture (architecture_type),
-    KEY ix_hosting_region (region),
     KEY ix_hosting_active (active),
-    KEY ix_hosting_provider_region (provider_id, region),
     CONSTRAINT fk_hosting_plan_provider FOREIGN KEY (provider_id) REFERENCES cloud_providers(id) ON DELETE RESTRICT,
     CONSTRAINT ck_hosting_architecture CHECK (architecture_type IN ('VPS','CLOUD_VM','KUBERNETES')),
     CONSTRAINT ck_hosting_currency CHECK (currency = 'USD'),
@@ -869,6 +854,11 @@ CREATE TABLE IF NOT EXISTS recommendations (
     rule_results JSON NOT NULL,
     model_version VARCHAR(60) NULL,
     model_probabilities JSON NOT NULL,
+    decision_evidence JSON NOT NULL,
+    cost_optimization JSON NOT NULL,
+    llm_explanation JSON NOT NULL,
+    llm_status VARCHAR(30) NOT NULL DEFAULT 'NOT_CONFIGURED',
+    llm_model VARCHAR(80) NULL,
 
     -- Advanced relational/API aliases; automatically derived where possible.
     recommended_hosting_type VARCHAR(30) GENERATED ALWAYS AS (recommended_option) STORED,
@@ -1147,6 +1137,13 @@ CREATE TABLE IF NOT EXISTS load_test_plans (
     target_url VARCHAR(2048) NOT NULL,
     authorization_confirmed TINYINT NULL,
     risk_acknowledged TINYINT NULL,
+    expected_concurrent_users INT UNSIGNED NULL,
+    estimated_rps DECIMAL(12,4) NULL,
+    peak_rps DECIMAL(12,4) NULL,
+    recommended_hosting VARCHAR(30) NULL,
+    recommended_vcpu INT UNSIGNED NULL,
+    recommended_ram_gb DECIMAL(10,2) NULL,
+    confidence DECIMAL(8,6) NULL,
     response_time_threshold_ms INT UNSIGNED NOT NULL DEFAULT 2000,
     error_rate_threshold DECIMAL(8,6) NOT NULL DEFAULT 0.010000,
     stages JSON NOT NULL,
@@ -1155,6 +1152,10 @@ CREATE TABLE IF NOT EXISTS load_test_plans (
     script_filename VARCHAR(255) NULL,
     safety_notes JSON NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'GENERATED',
+    generator_version VARCHAR(40) NOT NULL DEFAULT 'k6-generator-1.0.0',
+    workload_snapshot_json JSON NOT NULL,
+    ai_recommendation_snapshot_json JSON NOT NULL,
+    downloaded_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
@@ -1168,7 +1169,7 @@ CREATE TABLE IF NOT EXISTS load_test_plans (
     CONSTRAINT ck_load_test_type CHECK (test_type IN ('SMOKE','LOAD','STRESS','SPIKE','SOAK')),
     CONSTRAINT ck_load_test_values CHECK (virtual_users > 0 AND duration_seconds > 0),
     CONSTRAINT ck_load_test_error_rate CHECK (error_rate_threshold BETWEEN 0 AND 1),
-    CONSTRAINT ck_load_test_status CHECK (status IN ('DRAFT','GENERATED','DOWNLOADED','ARCHIVED'))
+    CONSTRAINT ck_load_test_status CHECK (status IN ('DRAFT','GENERATED','READY_TO_RUN','RUNNING','DOWNLOADED','RESULT_IMPORTED','ANALYSED','RUN_FAILED','ARCHIVED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS load_test_stages (
@@ -1177,6 +1178,7 @@ CREATE TABLE IF NOT EXISTS load_test_stages (
     stage_order INT UNSIGNED NOT NULL,
     duration_seconds INT UNSIGNED NOT NULL,
     target_virtual_users INT UNSIGNED NOT NULL,
+    stage_type VARCHAR(20) NOT NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_load_test_stage_order (load_test_plan_id, stage_order),
@@ -1184,6 +1186,92 @@ CREATE TABLE IF NOT EXISTS load_test_stages (
     CONSTRAINT fk_load_test_stage_plan FOREIGN KEY (load_test_plan_id) REFERENCES load_test_plans(id) ON DELETE CASCADE,
     CONSTRAINT ck_load_test_stage_order CHECK (stage_order > 0),
     CONSTRAINT ck_load_test_stage_values CHECK (duration_seconds > 0 AND target_virtual_users >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS load_test_results (
+    id VARCHAR(36) NOT NULL,
+    public_id VARCHAR(36) NOT NULL,
+    load_test_plan_id VARCHAR(36) NOT NULL,
+    project_id VARCHAR(36) NOT NULL,
+    analysis_run_id VARCHAR(36) NULL,
+    source_type VARCHAR(30) NOT NULL DEFAULT 'K6_SUMMARY_JSON',
+    started_at DATETIME(6) NULL,
+    completed_at DATETIME(6) NULL,
+    total_requests INT UNSIGNED NULL,
+    total_iterations INT UNSIGNED NULL,
+    average_rps DECIMAL(12,4) NULL,
+    http_req_duration_avg_ms DECIMAL(14,4) NULL,
+    http_req_duration_min_ms DECIMAL(14,4) NULL,
+    http_req_duration_max_ms DECIMAL(14,4) NULL,
+    http_req_duration_p50_ms DECIMAL(14,4) NULL,
+    http_req_duration_p90_ms DECIMAL(14,4) NULL,
+    http_req_duration_p95_ms DECIMAL(14,4) NULL,
+    http_req_duration_p99_ms DECIMAL(14,4) NULL,
+    http_req_failed_rate DECIMAL(10,8) NULL,
+    checks_passed INT UNSIGNED NULL,
+    checks_failed INT UNSIGNED NULL,
+    data_received_bytes BIGINT UNSIGNED NULL,
+    data_sent_bytes BIGINT UNSIGNED NULL,
+    peak_vus INT UNSIGNED NULL,
+    thresholds_passed TINYINT NOT NULL DEFAULT 0,
+    overall_status VARCHAR(30) NOT NULL,
+    ai_validation_status VARCHAR(40) NOT NULL,
+    analysis_json JSON NOT NULL,
+    raw_summary_json JSON NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_load_test_result_public_id (public_id),
+    KEY ix_load_test_result_plan (load_test_plan_id),
+    KEY ix_load_test_result_project (project_id),
+    CONSTRAINT fk_load_test_result_plan FOREIGN KEY (load_test_plan_id) REFERENCES load_test_plans(id) ON DELETE CASCADE,
+    CONSTRAINT fk_load_test_result_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_load_test_result_run FOREIGN KEY (analysis_run_id) REFERENCES analysis_runs(id) ON DELETE SET NULL,
+    CONSTRAINT ck_load_test_result_status CHECK (overall_status IN ('PASS','PARTIAL_PASS','FAIL','INVALID')),
+    CONSTRAINT ck_load_test_validation CHECK (ai_validation_status IN ('SUPPORTED','PARTIALLY_SUPPORTED','NOT_SUPPORTED','INSUFFICIENT_EVIDENCE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS load_test_environments (
+    id VARCHAR(36) NOT NULL,
+    load_test_plan_id VARCHAR(36) NOT NULL,
+    hosting_type VARCHAR(40) NULL,
+    vcpu INT UNSIGNED NULL,
+    ram_gb DECIMAL(10,2) NULL,
+    database_type VARCHAR(80) NULL,
+    cdn_enabled TINYINT NULL,
+    notes VARCHAR(1000) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_load_test_environment_plan (load_test_plan_id),
+    CONSTRAINT fk_load_test_environment_plan FOREIGN KEY (load_test_plan_id) REFERENCES load_test_plans(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS load_test_resource_metrics (
+    id VARCHAR(36) NOT NULL,
+    load_test_result_id VARCHAR(36) NOT NULL,
+    cpu_peak_percent DOUBLE NULL,
+    cpu_avg_percent DOUBLE NULL,
+    ram_peak_percent DOUBLE NULL,
+    ram_avg_percent DOUBLE NULL,
+    database_cpu_peak_percent DOUBLE NULL,
+    database_connections_peak INT UNSIGNED NULL,
+    server_load_average DOUBLE NULL,
+    notes VARCHAR(1000) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_load_test_resource_metric_result (load_test_result_id),
+    CONSTRAINT fk_load_test_resource_metric_result FOREIGN KEY (load_test_result_id) REFERENCES load_test_results(id) ON DELETE CASCADE,
+    CONSTRAINT ck_load_test_resource_percentages CHECK (
+        (cpu_peak_percent IS NULL OR cpu_peak_percent BETWEEN 0 AND 100) AND
+        (cpu_avg_percent IS NULL OR cpu_avg_percent BETWEEN 0 AND 100) AND
+        (ram_peak_percent IS NULL OR ram_peak_percent BETWEEN 0 AND 100) AND
+        (ram_avg_percent IS NULL OR ram_avg_percent BETWEEN 0 AND 100) AND
+        (database_cpu_peak_percent IS NULL OR database_cpu_peak_percent BETWEEN 0 AND 100)
+    ),
+    CONSTRAINT ck_load_test_resource_nonnegative CHECK (
+        (database_connections_peak IS NULL OR database_connections_peak >= 0) AND
+        (server_load_average IS NULL OR server_load_average >= 0)
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -1428,7 +1516,6 @@ SELECT
     cp.slug AS provider_slug,
     hp.plan_name,
     hp.architecture_type,
-    hp.region,
     hp.vcpu,
     hp.ram_gb,
     hp.storage_gb,
@@ -1488,7 +1575,6 @@ SELECT
     p.mode,
     p.status,
     p.website_url,
-    p.target_region,
     p.created_at,
     p.updated_at,
     r.recommended_option,
@@ -1610,18 +1696,18 @@ AS new
 ON DUPLICATE KEY UPDATE name = new.name, slug = new.slug, active = new.active;
 
 INSERT INTO hosting_plans
-(id, provider_id, plan_code, plan_name, architecture_type, region, region_code, region_name,
+(id, provider_id, plan_code, plan_name, architecture_type,
  vcpu, ram_gb, storage_gb, bandwidth_gb, managed, high_availability_supported,
  autoscaling_supported, base_monthly_cost, currency, source, active, is_demo)
 VALUES
-('92000000-0000-0000-0000-000000000001','91000000-0000-0000-0000-000000000001','DEMO-DO-VPS-2X4','Demo Basic 2x4','VPS','Singapore','sgp1','Singapore',2,4,80,2000,0,0,0,24.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000002','91000000-0000-0000-0000-000000000002','DEMO-HETZ-VPS-2X4','Demo CPX 2x4','VPS','Singapore','sg','Singapore',2,4,80,1000,0,0,0,18.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000003','91000000-0000-0000-0000-000000000001','DEMO-DO-VM-4X8','Demo General 4x8','CLOUD_VM','Singapore','sgp1','Singapore',4,8,160,4000,0,1,0,55.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000004','91000000-0000-0000-0000-000000000003','DEMO-AWS-VM-4X8','Demo General VM 4x8','CLOUD_VM','Singapore','ap-southeast-1','Singapore',4,8,100,NULL,0,1,0,70.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000005','91000000-0000-0000-0000-000000000004','DEMO-GCP-VM-4X8','Demo General VM 4x8','CLOUD_VM','Singapore','asia-southeast1','Singapore',4,8,100,NULL,0,1,0,75.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000006','91000000-0000-0000-0000-000000000005','DEMO-AZ-VM-4X8','Demo General VM 4x8','CLOUD_VM','Singapore','southeastasia','Singapore',4,8,100,NULL,0,1,0,80.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000007','91000000-0000-0000-0000-000000000001','DEMO-DO-K8S','Demo Managed K8s Baseline','KUBERNETES','Singapore','sgp1','Singapore',4,8,100,2000,1,1,1,120.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
-('92000000-0000-0000-0000-000000000008','91000000-0000-0000-0000-000000000003','DEMO-AWS-K8S','Demo Managed K8s Baseline','KUBERNETES','Singapore','ap-southeast-1','Singapore',4,8,100,NULL,1,1,1,150.00,'USD','DEMO_SEED_NOT_LIVE',1,1)
+('92000000-0000-0000-0000-000000000001','91000000-0000-0000-0000-000000000001','DEMO-DO-VPS-2X4','Demo Basic 2x4','VPS',2,4,80,2000,0,0,0,24.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000002','91000000-0000-0000-0000-000000000002','DEMO-HETZ-VPS-2X4','Demo CPX 2x4','VPS',2,4,80,1000,0,0,0,18.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000003','91000000-0000-0000-0000-000000000001','DEMO-DO-VM-4X8','Demo General 4x8','CLOUD_VM',4,8,160,4000,0,1,0,55.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000004','91000000-0000-0000-0000-000000000003','DEMO-AWS-VM-4X8','Demo General VM 4x8','CLOUD_VM',4,8,100,NULL,0,1,0,70.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000005','91000000-0000-0000-0000-000000000004','DEMO-GCP-VM-4X8','Demo General VM 4x8','CLOUD_VM',4,8,100,NULL,0,1,0,75.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000006','91000000-0000-0000-0000-000000000005','DEMO-AZ-VM-4X8','Demo General VM 4x8','CLOUD_VM',4,8,100,NULL,0,1,0,80.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000007','91000000-0000-0000-0000-000000000001','DEMO-DO-K8S','Demo Managed K8s Baseline','KUBERNETES',4,8,100,2000,1,1,1,120.00,'USD','DEMO_SEED_NOT_LIVE',1,1),
+('92000000-0000-0000-0000-000000000008','91000000-0000-0000-0000-000000000003','DEMO-AWS-K8S','Demo Managed K8s Baseline','KUBERNETES',4,8,100,NULL,1,1,1,150.00,'USD','DEMO_SEED_NOT_LIVE',1,1)
 AS new
 ON DUPLICATE KEY UPDATE
     plan_name=new.plan_name, vcpu=new.vcpu, ram_gb=new.ram_gb, storage_gb=new.storage_gb,
@@ -1654,15 +1740,15 @@ SET @seed_user_password_hash = '$2b$12$c1dP.qRmUNTINNgl7s0UWOF.uLU2ccHngnB3u4z44
 SET @seed_user_id = '94000000-0000-0000-0000-000000000001';
 
 INSERT INTO users
-(id, full_name, email, password_hash, role, status, is_verified, experience_level, default_region, timezone)
+(id, full_name, email, password_hash, role, status, is_verified, experience_level, timezone)
 SELECT @seed_user_id, 'Hosting Advisor Demo User', @seed_user_email, @seed_user_password_hash,
-       'USER', 'ACTIVE', 1, 'INTERMEDIATE', 'Sri Lanka', 'Asia/Colombo'
+       'USER', 'ACTIVE', 1, 'INTERMEDIATE', 'Asia/Colombo'
 WHERE @seed_user_password_hash IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM users WHERE email = @seed_user_email);
 
 INSERT INTO user_preferences
-(id, user_id, theme, default_currency, default_region, timezone, chart_animations, email_notifications, analysis_notifications)
-SELECT '94000000-0000-0000-0000-000000000002', u.id, 'SYSTEM', 'USD', 'Sri Lanka', 'Asia/Colombo', 1, 1, 1
+(id, user_id, theme, timezone, chart_animations, email_notifications, analysis_notifications)
+SELECT '94000000-0000-0000-0000-000000000002', u.id, 'SYSTEM', 'Asia/Colombo', 1, 1, 1
 FROM users u
 WHERE u.email = @seed_user_email
   AND NOT EXISTS (SELECT 1 FROM user_preferences up WHERE up.user_id = u.id);
@@ -1672,23 +1758,23 @@ WHERE u.email = @seed_user_email
 -- ============================================================================
 
 INSERT INTO projects
-(id, user_id, title, slug, mode, status, website_category, currency, target_region, description, is_demo)
+(id, user_id, title, slug, mode, status, website_category, currency, description, is_demo)
 SELECT
 '95000000-0000-0000-0000-000000000001', u.id, 'Demo Planned E-commerce', 'demo-planned-ecommerce',
-'PLANNED', 'COMPLETED', 'ECOMMERCE', 'USD', 'Singapore',
+'PLANNED', 'COMPLETED', 'ECOMMERCE', 'USD',
 'Coherent demonstration project for dashboard, workload, recommendation, cost, optimization and reporting.', 1
 FROM users u
 WHERE u.email = @seed_user_email
   AND NOT EXISTS (SELECT 1 FROM projects WHERE id='95000000-0000-0000-0000-000000000001');
 
 INSERT INTO project_inputs
-(id, project_id, payload, completeness_score, target_region, frontend_framework, backend_framework, database_type,
+(id, project_id, payload, completeness_score, frontend_framework, backend_framework, database_type,
  expected_monthly_users, peak_concurrent_users, requests_per_user_per_minute, traffic_growth, database_intensity,
  estimated_storage_gb, monthly_budget_usd, operational_skill, managed_database_preferred)
 SELECT
 '95000000-0000-0000-0000-000000000002', p.id,
 JSON_OBJECT('projectName','Demo Planned E-commerce','frontend','Next.js','backend','FastAPI','database','MySQL','monthlyUsers',30000,'concurrentUsers',250,'budget',100,'currency','USD','managedDatabase',true),
-0.95, 'Singapore','Next.js','FastAPI','MySQL',30000,250,10.0,'MEDIUM','MEDIUM',100.00,100.00,'INTERMEDIATE',1
+0.95, 'Next.js','FastAPI','MySQL',30000,250,10.0,'MEDIUM','MEDIUM',100.00,100.00,'INTERMEDIATE',1
 FROM projects p
 WHERE p.id='95000000-0000-0000-0000-000000000001'
   AND NOT EXISTS (SELECT 1 FROM project_inputs WHERE project_id=p.id);
@@ -1791,7 +1877,7 @@ AND NOT EXISTS (SELECT 1 FROM cost_estimates WHERE id='95000000-0000-0000-0000-0
 
 INSERT INTO optimization_suggestions
 (id,project_id,analysis_run_id,priority,category,title,explanation,impact,difficulty,benefit,status,steps)
-SELECT '95000000-0000-0000-0000-000000000010',p.id,'95000000-0000-0000-0000-000000000003','HIGH','CACHE_CDN','Use a CDN for static assets','A CDN can reduce latency and origin load for users outside the deployment region.','Lower latency','EASY','Better global delivery','OPEN',JSON_ARRAY('Configure CDN','Cache static assets','Measure cache hit ratio')
+SELECT '95000000-0000-0000-0000-000000000010',p.id,'95000000-0000-0000-0000-000000000003','HIGH','CACHE_CDN','Use a CDN for static assets','A CDN can reduce latency and origin load for globally distributed users.','Lower latency','EASY','Better global delivery','OPEN',JSON_ARRAY('Configure CDN','Cache static assets','Measure cache hit ratio')
 FROM projects p
 WHERE p.id='95000000-0000-0000-0000-000000000001'
 AND NOT EXISTS (SELECT 1 FROM optimization_suggestions WHERE id='95000000-0000-0000-0000-000000000010');

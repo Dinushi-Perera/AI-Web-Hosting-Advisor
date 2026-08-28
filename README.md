@@ -83,6 +83,7 @@ The application is a **decision-support system**. It does **not** automatically 
 - Performance findings
 - Workload estimate
 - Optimization actions
+- Database-backed dynamic clarification answers for missing workload inputs
 - Safe k6 test plan
 - Downloadable report
 
@@ -137,10 +138,15 @@ The project brings several software-engineering disciplines together in one prac
 - Resource requirement estimation
 - AI/ML hosting prediction
 - Rule-based safety and architecture constraints
-- Cost-fit analysis
+- Explicit VPS, Cloud VM, and Kubernetes ranking with weighted score contributions and rule adjustments
+- Monthly and annual stored-provider cost ranges with full-range budget-fit analysis
+- Separate PageSpeed acquisition, Lighthouse lab diagnostics, and CrUX/Core Web Vitals field evidence
 - Recommendation confidence
 - Optimization suggestions
 - Infrastructure architecture visualization
+- Input-aware analysis coverage and decision-factor charts
+- Nine plain-language validations for each completed project
+- Connected report, optimization, feedback, load-test, notification, and audit-history records
 - Historical comparison
 
 ## AI/ML
@@ -180,8 +186,9 @@ The project brings several software-engineering disciplines together in one prac
 - Server-side URL safety validation
 - Configurable test stages
 - Conservative VU and duration limits
-- Script download
-- No automatic unrestricted load execution
+- Genuine k6 summary output and threshold evidence
+- One-click bounded execution without scripts, terminals, downloads, or imports
+- PageSpeed/Lighthouse context kept separate from k6 server-load evidence
 
 ## Reporting
 
@@ -485,6 +492,8 @@ Unavailable live metrics are not fabricated.
 The user describes a new application idea and its expected features.
 
 The system derives/collects structured requirements and converts them into the same recommendation feature space used by the other two modes.
+
+Before submission, the frontend requests clarification questions from the backend. Answers such as expected concurrency, storage, and database intensity are stored in `project_clarifications`, promoted into the canonical project input, and used by workload estimation, resource sizing, cost comparison, and recommendation confidence.
 
 ---
 
@@ -1064,11 +1073,13 @@ docker compose up --build
 
 # API Integration
 
-The frontend and backend are already designed around:
+For a direct local backend process, the frontend can use:
 
 ```text
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 ```
+
+Docker Compose uses `http://localhost:8001/api/v1` by default so it can coexist with a local development server. Override `BACKEND_HOST_PORT` and `DOCKER_PUBLIC_API_BASE_URL` together when needed.
 
 ## Important API routes
 
@@ -1193,7 +1204,7 @@ At minimum, replace:
 
 ```env
 JWT_SECRET=replace-with-a-long-random-secret
-MYSQL_PASSWORD=replace-this-password
+MYSQL_APP_PASSWORD=replace-this-password
 MYSQL_ROOT_PASSWORD=replace-this-root-password
 ```
 
@@ -1207,20 +1218,20 @@ Docker starts:
 
 | Container | Port | Purpose |
 |---|---:|---|
-| Frontend | 3000 | Next.js UI |
-| Backend | 8000 | FastAPI |
-| MySQL | 3306 | Relational database |
+| Frontend | 3001 | Next.js UI |
+| Backend | 8001 | FastAPI |
+| MySQL | 3307 | Relational database / Workbench connection |
 | Redis | 6379 | Queue/cache |
 | Worker | internal | Celery analysis jobs |
 
 ## 5. Open the application
 
 ```text
-Frontend:      http://localhost:3000
-Backend:       http://localhost:8000
-Swagger:       http://localhost:8000/docs
-Health:        http://localhost:8000/health
-Readiness:     http://localhost:8000/health/ready
+Frontend:      http://localhost:3001
+Backend:       http://localhost:8001
+Swagger:       http://localhost:8001/docs
+Health:        http://localhost:8001/health
+Readiness:     http://localhost:8001/health/ready
 ```
 
 ## 6. Create a user
@@ -1230,7 +1241,7 @@ The current application does **not** require or seed an application administrato
 Open:
 
 ```text
-http://localhost:3000/register
+http://localhost:3001/register
 ```
 
 Register a normal user account and sign in.
@@ -1286,7 +1297,7 @@ Optional:
 - MySQL Workbench
 - Postman
 - Jupyter Notebook
-- k6 CLI for manually running authorized scripts
+- k6 CLI on the backend host (included in the backend container image)
 
 ## 1. Start MySQL
 
@@ -1364,8 +1375,9 @@ JWT_SECRET=replace_with_a_long_random_secret
 
 PAGESPEED_API_KEY=
 
-OPENAI_API_KEY=
+OPENROUTER_API_KEY=
 LLM_ENABLED=false
+OPENROUTER_MODEL=z-ai/glm-5.2:free
 
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_DEMO_MODE=false
@@ -1402,7 +1414,9 @@ PAGESPEED_API_KEY=
 PAGESPEED_CACHE_SECONDS=900
 
 LLM_ENABLED=false
-OPENAI_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=z-ai/glm-5.2:free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 DEFAULT_CURRENCY=USD
 PRICING_STALE_DAYS=30
@@ -1432,7 +1446,7 @@ JWT_SECRET
 MYSQL_PASSWORD
 MYSQL_ROOT_PASSWORD
 PAGESPEED_API_KEY
-OPENAI_API_KEY
+OPENROUTER_API_KEY
 SMTP_PASSWORD
 ```
 
@@ -1457,9 +1471,7 @@ If no key is configured or the external service is unavailable:
 
 # Load-Test Planner
 
-The system creates a **k6 test plan/script**.
-
-It does not automatically perform unrestricted load testing.
+The system creates a **safe k6 scenario template** from the user-confirmed workload, PageSpeed/Lighthouse evidence, Hosting Recommendation model, and Resource Sizing model. The managed workflow executes only this server-generated GET-only scenario under strict caps; it never executes arbitrary user scripts or unrestricted load.
 
 Before a plan is generated, the backend requires:
 
@@ -1591,6 +1603,11 @@ Test areas include:
 - database integration
 - security validation
 - report generation
+- all three input modes and every project-detail section
+- 15 authenticated project API sections for each live, planned, and idea workflow
+- nine input-specific checks covering inputs, technology, performance, workload, recommendation, cost, optimizations, reports, and load-test safety
+- clarification persistence and its effect on sizing inputs
+- cost, performance, security, and monitoring optimization categories
 
 ## Health checks
 
@@ -1677,21 +1694,14 @@ The notebooks generate:
 
 ## Production artifacts
 
-The connected backend expects model artifacts under:
+The backend automatically loads the selected artifacts supplied with this repository:
 
 ```text
-backend/app/ml/models/
+models/classifier/production/LogisticRegression_full5000.joblib
+models/resource/production/RandomForestRegressor_full5000.joblib
 ```
 
-Current selected runtime artifacts:
-
-```text
-hosting_classifier_v1_0_0.joblib
-resource_sizer_v1_0_0.joblib
-model_metadata.json
-```
-
-If a newly approved model is trained with a new filename/version, update/copy the artifact into the backend model directory and keep the metadata/version consistent.
+Docker mounts the repository `models/` directory read-only at `/app/models`. The analysis pipeline stores the classifier version, resource-model provenance, model probabilities, and the exact 26-feature snapshot in MySQL. Configure alternate approved artifacts with `CLASSIFIER_MODEL_PATH` and `RESOURCE_MODEL_PATH`.
 
 ---
 
@@ -1819,13 +1829,13 @@ docker compose up --build
 Default ports:
 
 ```text
-3000 → frontend
-8000 → backend
-3306 → MySQL
+3001 → frontend
+8001 → backend
+3307 → MySQL
 6379 → Redis
 ```
 
-Stop the process using the port or modify the Docker port mapping.
+Override `FRONTEND_HOST_PORT`, `BACKEND_HOST_PORT`, `MYSQL_HOST_PORT`, and `DOCKER_PUBLIC_API_BASE_URL` in `.env` when another application uses these ports.
 
 ---
 
@@ -1920,6 +1930,25 @@ LICENSE
 Third-party datasets and external resources remain subject to their own original licenses/terms and should not be re-licensed as project-owned data.
 
 See `ml/DATA_PROVENANCE.md` for dataset/source notes.
+
+---
+
+# Authorized k6 Validation Workflow
+
+Each completed project has a **Load Test** section and the sidebar exposes the same dashboard under **AI Advisor → Load Testing**. The planner uses the stored workload estimate, PageSpeed/Lighthouse context, Hosting Recommendation model, and Resource Sizing model to produce a capped, explainable k6 scenario. Ownership/permission and availability-risk confirmations are mandatory.
+
+1. Open a completed project and select **Load Test**.
+2. Review expected concurrency, RPS, peak RPS, architecture, vCPU, and RAM.
+3. Confirm authorization and risk, then select **Run test and create report**.
+4. The backend validates the public target and approved hostname, creates a GET-only k6 template, pins the validated public host, and invokes the installed k6 binary without a shell.
+5. k6 writes the genuine aggregated JSON summary. The backend validates it and stores p50/p90/p95/p99 latency, error rate, RPS, checks, peak VUs, thresholds, and expected-RPS traffic coverage.
+6. The dashboard displays the report automatically and saves it in project history, audit history, notifications, testing evidence, comparisons, and final reports.
+
+PageSpeed/Lighthouse and k6 answer different questions. PageSpeed, Lighthouse, and CrUX describe frontend quality and user experience. k6 measures application/server response under simulated traffic. Neither is presented as a substitute for the other.
+
+A passing scenario does not permanently prove production capacity. Resource sizing is marked supported only when actual tested CPU/RAM evidence matches the predicted starting size and the planned workload was reached.
+
+Safety policy is configured with `K6_MAX_VUS`, managed k6 concurrency/duration caps, execution timeout, p95/p99/check/error thresholds, enabled test types, and result-size limits. Only HTTP(S) public targets are accepted; live-project targets must match the analysed host. Private, local, metadata, credential-bearing, unsafe-port, redirect, destructive-path, and cross-host targets are blocked. The generated scenario uses confirmed safe GET paths and never stores credentials.
 
 ---
 

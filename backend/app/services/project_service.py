@@ -15,14 +15,19 @@ def completeness(payload:dict)->float:
     meaningful=[v for v in payload.values() if v not in (None,"",[],{},"Unknown","Not Decided","Unsure")]
     return round(min(1.0,len(meaningful)/max(8,len(payload))),2)
 
+def normalized_payload(payload:dict)->dict:
+    """Remove retired client preferences and keep the monetary unit server-owned."""
+    blocked={"region","target_region","targetRegion","defaultRegion","currency","defaultCurrency"}
+    return {**{k:v for k,v in payload.items() if k not in blocked},"currency":"USD"}
+
 class ProjectService:
     def __init__(self,db:Session): self.db=db
     def create(self,user_id:str,mode:str,title:str,payload:dict,status="DRAFT"):
         currency=str(payload.get("currency","USD")).upper()
         if currency!="USD": raise AppError("CURRENCY_UNSUPPORTED","Only USD is supported.",422)
+        payload=normalized_payload(payload)
         website=payload.get("websiteUrl") or payload.get("url")
-        region=payload.get("region") or payload.get("target_region") or payload.get("targetRegion")
-        p=Project(user_id=user_id,title=title.strip(),mode=mode_internal(mode),status=status,website_url=website,currency="USD",target_region=region)
+        p=Project(user_id=user_id,title=title.strip(),mode=mode_internal(mode),status=status,website_url=website,currency="USD")
         self.db.add(p); self.db.flush(); self.db.add(ProjectInput(project_id=p.id,payload={**payload,"currency":"USD"},completeness_score=completeness(payload))); self.db.add(AuditLog(actor_user_id=user_id,action="PROJECT_CREATED",entity_type="PROJECT",entity_id=p.id)); self.db.commit(); return p
     def owned(self,project_id,user):
         p=self.db.get(Project,project_id)
@@ -36,7 +41,7 @@ class ProjectService:
         inp=self.db.scalar(select(ProjectInput).where(ProjectInput.project_id==p.id))
         incoming=patch.get("input") or {k:v for k,v in patch.items() if k not in {"title","name","status"} and v is not None}
         if incoming:
-            merged={**(inp.payload if inp else {}),**incoming,"currency":"USD"}
+            merged=normalized_payload({**(inp.payload if inp else {}),**incoming})
             if inp: inp.payload=merged; inp.completeness_score=completeness(merged)
             else: self.db.add(ProjectInput(project_id=p.id,payload=merged,completeness_score=completeness(merged)))
             p.recommendation_stale=True

@@ -11,7 +11,7 @@ from app.models import User,UserPreference,UserSession,AuditLog
 from app.services.auth_service import mask_ip,utcnow
 from app.core.exceptions import AppError
 router=APIRouter(prefix="/users",tags=["Users"])
-def uj(u): return {"id":u.id,"fullName":u.full_name,"email":u.email,"role":u.role.lower(),"experienceLevel":u.experience_level.title(),"defaultRegion":u.default_region,"currency":"USD","timezone":u.timezone,"avatar":u.avatar_key,"avatarUrl":"/users/me/avatar" if u.avatar_key else None}
+def uj(u): return {"id":u.id,"fullName":u.full_name,"email":u.email,"role":u.role.lower(),"experienceLevel":u.experience_level.title(),"currency":"USD","timezone":u.timezone,"avatar":u.avatar_key,"avatarUrl":"/users/me/avatar" if u.avatar_key else None}
 @router.get("/me")
 def get_me(user=Depends(get_current_user)): return uj(user)
 @router.patch("/me")
@@ -24,7 +24,6 @@ def patch_me(req:UserPatch,user=Depends(get_current_user),db:Session=Depends(get
     if "fullName" in d:user.full_name=d["fullName"].strip()
     if "email" in d:user.email=str(d["email"]).lower()
     if "experienceLevel" in d:user.experience_level=d["experienceLevel"].upper()
-    if "defaultRegion" in d:user.default_region=d["defaultRegion"]
     if "timezone" in d:user.timezone=d["timezone"]
     db.add(AuditLog(actor_user_id=user.id,action="PROFILE_UPDATE",entity_type="USER",entity_id=user.id,metadata_json={"fields":sorted(d.keys())}))
     db.commit(); return uj(user)
@@ -54,14 +53,14 @@ def remove_avatar(user=Depends(get_current_user),db:Session=Depends(get_db)):
 @router.get("/me/preferences")
 def preferences(user=Depends(get_current_user),db:Session=Depends(get_db)):
     p=db.scalar(select(UserPreference).where(UserPreference.user_id==user.id))
-    return {"theme":p.theme.lower(),"defaultCurrency":"USD","defaultRegion":p.default_region,"timezone":p.timezone,"chartAnimations":p.chart_animations,"emailNotifications":p.email_notifications,"analysisNotifications":p.analysis_notifications,"onboardingCompleted":p.onboarding_completed}
+    return {"theme":p.theme.lower(),"currency":"USD","timezone":p.timezone,"chartAnimations":p.chart_animations,"emailNotifications":p.email_notifications,"analysisNotifications":p.analysis_notifications,"onboardingCompleted":p.onboarding_completed}
 @router.patch("/me/preferences")
 def patch_preferences(req:PreferencePatch,user=Depends(get_current_user),db:Session=Depends(get_db)):
     p=db.scalar(select(UserPreference).where(UserPreference.user_id==user.id)); d=req.model_dump(exclude_none=True)
-    mp={"theme":"theme","defaultRegion":"default_region","timezone":"timezone","chartAnimations":"chart_animations","emailNotifications":"email_notifications","analysisNotifications":"analysis_notifications","onboardingCompleted":"onboarding_completed"}
+    mp={"theme":"theme","timezone":"timezone","chartAnimations":"chart_animations","emailNotifications":"email_notifications","analysisNotifications":"analysis_notifications","onboardingCompleted":"onboarding_completed"}
     for k,a in mp.items():
         if k in d:setattr(p,a,d[k].upper() if k=="theme" else d[k])
-    p.default_currency="USD"; db.add(AuditLog(actor_user_id=user.id,action="PREFERENCES_UPDATE",entity_type="USER_PREFERENCE",entity_id=p.id,metadata_json={"fields":sorted(d.keys())})); db.commit(); return preferences(user,db)
+    db.add(AuditLog(actor_user_id=user.id,action="PREFERENCES_UPDATE",entity_type="USER_PREFERENCE",entity_id=p.id,metadata_json={"fields":sorted(d.keys())})); db.commit(); return preferences(user,db)
 @router.get("/me/sessions")
 def sessions(user=Depends(get_current_user),db:Session=Depends(get_db)):
     rows=list(db.scalars(select(UserSession).where(UserSession.user_id==user.id,UserSession.revoked_at.is_(None)).order_by(UserSession.last_active_at.desc())))

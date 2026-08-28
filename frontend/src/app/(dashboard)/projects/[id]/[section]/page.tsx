@@ -1,3 +1,3 @@
 import { ProjectHeader } from "@/components/projects/project-header";import { ProjectTabs } from "@/components/projects/project-tabs";import { ProjectSection } from "@/components/projects/project-section";
-const allowed=new Set(['technology','performance','workload','recommendation','cost','load-test','optimization','report','history']);
+const allowed=new Set(['technology','performance','workload','recommendation','architecture','cost','load-test','optimization','report','history']);
 export default async function Page({params}:{params:Promise<{id:string;section:string}>}){const {id,section}=await params;return <div className="grid gap-6"><ProjectHeader id={id}/><ProjectTabs id={id} active={section}/>{allowed.has(section)?<ProjectSection id={id} section={section}/>:<div className="rounded-2xl border p-8">Unknown project section.</div>}</div>}

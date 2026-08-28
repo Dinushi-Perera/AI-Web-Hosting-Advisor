@@ -1,9 +1,5 @@
 def evaluate(payload:dict,workload:dict)->list[dict]:
-    rules=[]; peak=float(workload.get("peak_rps") or 0); budget=float(payload.get("budget") or payload.get("monthly_budget") or 0); skill=str(payload.get("operational_skill") or ("ADVANCED" if payload.get("kubernetesSkill") else "BEGINNER")).upper(); app=str(payload.get("category") or payload.get("websiteType") or payload.get("industry") or "").upper(); multi=str(payload.get("multiRegion") or payload.get("multi_region") or "NO").upper() in {"YES","TRUE"}; rapid=bool(payload.get("rapidScaling")) or "RAPID" in str(payload.get("growth") or "").upper()
-    if peak<20 and app in {"BLOG","PORTFOLIO","CORPORATE","STATIC"}:
-        rules += [{"rule_id":"R_SMALL_VPS","option":"VPS","effect":"BOOST","score_delta":18,"reason":"Low workload strongly fits a simple VPS."},{"rule_id":"R_SMALL_K8S","option":"KUBERNETES","effect":"PENALTY","score_delta":-30,"reason":"Kubernetes adds unnecessary complexity for a small workload."}]
-    if budget and budget<80: rules.append({"rule_id":"R_K8S_BUDGET","option":"KUBERNETES","effect":"PENALTY","score_delta":-22,"reason":"The selected budget is low for a practical Kubernetes setup."})
-    if skill in {"BEGINNER","LOW","NO"}: rules.append({"rule_id":"R_K8S_LOW_SKILL","option":"KUBERNETES","effect":"PENALTY","score_delta":-20,"reason":"Operational skill is below the recommended level for Kubernetes."})
-    if peak>=150: rules.append({"rule_id":"R_CLOUD_GROWTH","option":"CLOUD_VM","effect":"BOOST","score_delta":12,"reason":"A cloud VM provides useful scaling headroom for the estimated workload."})
-    if peak>=500 and multi and rapid and skill in {"ADVANCED","HIGH","YES"}: rules.append({"rule_id":"R_K8S_SCALE","option":"KUBERNETES","effect":"BOOST","score_delta":24,"reason":"High load, multi-region needs and operational capability can justify orchestration."})
-    return rules
+    del payload, workload
+    # Runtime rules used to modify option scores. They are intentionally disabled:
+    # the trained Logistic Regression classifier is the only hosting selector.
+    return []

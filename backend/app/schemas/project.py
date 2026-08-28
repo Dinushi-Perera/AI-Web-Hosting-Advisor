@@ -9,12 +9,6 @@ class ProjectCreate(BaseModel):
     projectName: str | None = None
     input: dict[str, Any] | None = None
     status: str = "DRAFT"
-    currency: str = "USD"
-    @field_validator("currency")
-    @classmethod
-    def usd(cls,v):
-        if v.upper() != "USD": raise ValueError("Only USD is supported")
-        return "USD"
 
 class ProjectPatch(BaseModel):
     model_config=ConfigDict(extra="allow")
@@ -22,24 +16,16 @@ class ProjectPatch(BaseModel):
     name: str | None = None
     status: str | None = None
     input: dict[str, Any] | None = None
-    currency: str | None = None
-    @field_validator("currency")
-    @classmethod
-    def usd(cls,v):
-        if v is not None and v.upper() != "USD": raise ValueError("Only USD is supported")
-        return "USD" if v else v
 
 class LiveFrontendRequest(BaseModel):
     projectName: str = Field(min_length=2,max_length=120)
     websiteUrl: str
     category: str
-    region: str
     monthlyVisitors: int = Field(ge=0,le=1_000_000_000)
     concurrentUsers: int = Field(ge=1,le=1_000_000)
     growth: str
     trafficPattern: str
     budget: float = Field(ge=0,le=1_000_000)
-    currency: str = "USD"
     budgetFlexibility: str
     managesServers: bool
     highAvailability: bool
@@ -47,30 +33,30 @@ class LiveFrontendRequest(BaseModel):
     kubernetesSkill: bool
     managedDatabase: bool
     backups: bool
-    @field_validator("currency")
-    @classmethod
-    def usd(cls,v):
-        if v.upper() != "USD": raise ValueError("Only USD is supported by this Sri Lankan project deployment")
-        return "USD"
 
 class PlannedFrontendRequest(BaseModel):
     model_config=ConfigDict(extra="allow")
     projectName: str = Field(min_length=2,max_length=120)
-    currency: str = "USD"
-    @field_validator("currency")
+    websiteType: str = Field(min_length=1,max_length=80)
+    description: str = Field(default="",max_length=1000)
+    concurrentUsers: int | None = Field(default=None,ge=1,le=1_000_000)
+    monthlyUsers: int | None = Field(default=None,ge=0,le=1_000_000_000)
+    requestsPerUser: float | None = Field(default=None,ge=0.1,le=100_000)
+    storage: float = Field(default=50,ge=0,le=10_000_000)
+    budget: float = Field(ge=0,le=1_000_000)
+    @field_validator("concurrentUsers","monthlyUsers","requestsPerUser",mode="before")
     @classmethod
-    def usd(cls,v):
-        if v.upper() != "USD": raise ValueError("Only USD is supported")
-        return "USD"
+    def optional_numbers(cls,v): return None if v in (None,"","Unknown","I don't know") else v
 
 class IdeaFrontendRequest(BaseModel):
     model_config=ConfigDict(extra="allow")
     projectName: str | None = None
-    idea: str | None = None
+    idea: str = Field(min_length=20,max_length=5000)
     description: str | None = None
-    currency: str = "USD"
-    @field_validator("currency")
-    @classmethod
-    def usd(cls,v):
-        if v.upper() != "USD": raise ValueError("Only USD is supported")
-        return "USD"
+    industry: str = Field(min_length=1,max_length=100)
+    targetUsers: str = Field(min_length=2,max_length=500)
+    features: list[str] = Field(min_length=1,max_length=50)
+    traffic: str = Field(min_length=1,max_length=100)
+    budget: float = Field(ge=0,le=1_000_000)
+    timeline: str = Field(min_length=1,max_length=100)
+    experience: str = Field(min_length=1,max_length=100)

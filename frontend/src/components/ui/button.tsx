@@ -11,7 +11,7 @@ const buttonVariants = cva("inline-flex items-center justify-center gap-2 whites
       outline: "border bg-[var(--card)] hover:bg-[var(--muted)]",
       ghost: "hover:bg-[var(--muted)]",
       danger: "bg-[var(--danger)] text-white hover:brightness-105",
-      gradient: "bg-gradient-to-r from-emerald-700 via-green-600 to-amber-500 text-white shadow-lg shadow-emerald-500/20 hover:brightness-105 hover:shadow-xl",
+      gradient: "bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-500 text-white shadow-lg shadow-indigo-500/25 hover:brightness-110 hover:shadow-xl hover:shadow-violet-500/20",
     },
     size: { sm: "h-9 px-3", md: "h-10 px-4", lg: "h-12 px-5 text-base", icon: "size-10" },
   },

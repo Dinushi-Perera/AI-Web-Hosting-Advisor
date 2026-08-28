@@ -6,16 +6,15 @@ import warnings
 
 import joblib
 import pandas as pd
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import MLModelVersion
+from app.core.exceptions import AppError
 
 logger = logging.getLogger(__name__)
 
-CLASSIFIER_VERSION = "hosting-classifier-selected-full5000"
-RESOURCE_VERSION = "resource-sizer-selected-full5000"
+CLASSIFIER_VERSION = "LogisticRegression_full5000"
+RESOURCE_VERSION = "RandomForestRegressor_full5000"
 MODEL_FEATURES = [
     "monthly_users", "expected_concurrent_users", "requests_per_user_min", "estimated_rps",
     "peak_rps", "budget_usd", "storage_gb", "performance_score", "performance_available",
@@ -117,7 +116,7 @@ def build_model_features(payload: dict, workload: dict, tech: list[dict], perf: 
         "background_jobs": _flag(payload.get("backgroundJobs") or payload.get("background_jobs")),
         "media_heavy": int(media in {"high", "streaming"} or "video" in features_text),
         "high_availability": _flag(payload.get("highAvailability")) or int(uptime in {"99.95", "99.99"}),
-        "multi_region_required": _flag(payload.get("multiRegion") or payload.get("multi_region_required")),
+        "multi_region_required": 0,
         "autoscaling_required": _flag(payload.get("autoscaling") or payload.get("rapidScaling") or payload.get("autoscaling_required")),
         "managed_database_preferred": _flag(payload.get("managedDatabase") or payload.get("managed_database_preferred")),
         "project_mode": mode,
@@ -159,48 +158,31 @@ def _frame(model, features: dict) -> pd.DataFrame:
     return pd.DataFrame([{name: features.get(name, 0) for name in names}], columns=names)
 
 
-def heuristic(workload: dict, payload: dict):
-    peak = float(workload.get("peak_rps") or 0)
-    budget = float(payload.get("budget") or payload.get("monthly_budget") or 0)
-    kskill = bool(payload.get("kubernetesSkill")) or str(payload.get("operational_skill", "")).upper() == "ADVANCED"
-    if peak < 30:
-        probs = {"VPS": 0.72, "CLOUD_VM": 0.24, "KUBERNETES": 0.04}
-    elif peak < 400:
-        probs = {"VPS": 0.18, "CLOUD_VM": 0.74, "KUBERNETES": 0.08}
-    else:
-        probs = {"VPS": 0.05, "CLOUD_VM": 0.55, "KUBERNETES": 0.40}
-    if budget and budget < 80:
-        probs["KUBERNETES"] *= 0.5
-        probs["VPS"] += 0.05
-    if kskill and peak > 400:
-        probs["KUBERNETES"] += 0.15
-        probs["CLOUD_VM"] -= 0.08
-    total = sum(max(0, value) for value in probs.values())
-    probs = {key: round(max(0, value) / total, 4) for key, value in probs.items()}
-    return {"predicted_class": max(probs, key=probs.get), "probabilities": probs, "model_version": "RULE_FALLBACK", "model_version_id": None, "is_trained_model": False}
-
-
 def _classifier_prediction(model, features: dict, version: str, model_id: str | None = None) -> dict:
     probabilities = model.predict_proba(_frame(model, features))[0]
     classes = list(model.classes_)
+    expected_classes = {"VPS", "CLOUD_VM", "KUBERNETES"}
+    if set(map(str, classes)) != expected_classes:
+        raise AppError("CLASSIFIER_MODEL_INVALID", "The configured Logistic Regression classifier must contain VPS, Cloud VM, and Kubernetes classes.", 500)
     probs = {str(name): round(float(value), 6) for name, value in zip(classes, probabilities)}
     return {"predicted_class": str(classes[int(probabilities.argmax())]), "probabilities": probs, "model_version": version, "model_version_id": model_id, "is_trained_model": True}
 
 
 def predict(db: Session, features: dict, workload: dict, payload: dict):
-    version = db.scalar(select(MLModelVersion).where(MLModelVersion.is_active.is_(True)).order_by(MLModelVersion.created_at.desc()))
-    candidates: list[tuple[str, str, str | None]] = []
-    if version:
-        candidates.append((version.model_path, version.version, version.id))
-    candidates.append((settings.classifier_model_path, CLASSIFIER_VERSION, None))
-    for configured, label, model_id in candidates:
-        try:
-            model, _ = _artifact(configured)
-            if model is not None:
-                return _classifier_prediction(model, features, label, model_id)
-        except Exception:
-            logger.exception("Classifier model could not be loaded or executed", extra={"model_path": configured})
-    return heuristic(workload, payload)
+    del db, workload, payload
+    # Hosting selection has one authoritative source: the configured production
+    # Logistic Regression artifact. There is deliberately no rule, pricing, or
+    # secondary-model fallback that could alter the predicted class.
+    try:
+        model, path = _artifact(settings.classifier_model_path)
+        if model is None:
+            raise AppError("CLASSIFIER_MODEL_UNAVAILABLE", "The trained Logistic Regression classifier is unavailable, so a hosting recommendation cannot be generated.", 503)
+        return _classifier_prediction(model, features, CLASSIFIER_VERSION)
+    except AppError:
+        raise
+    except Exception as exc:
+        logger.exception("Classifier model could not be loaded or executed", extra={"model_path": settings.classifier_model_path})
+        raise AppError("CLASSIFIER_MODEL_UNAVAILABLE", "The trained Logistic Regression classifier could not produce a recommendation.", 503) from exc
 
 
 def _nearest_tier(value: float, tiers: list[int]) -> int:
@@ -230,6 +212,6 @@ def bundled_model_status() -> dict:
     classifier = resolve_model_path(settings.classifier_model_path)
     resource = resolve_model_path(settings.resource_model_path)
     return {
-        "classifier": {"available": classifier is not None, "version": CLASSIFIER_VERSION, "algorithm": "LogisticRegression", "accuracy": 0.973333, "f1": 0.973369, "evaluationSet": "independent_validation_cases_300.csv"},
-        "resource": {"available": resource is not None, "version": RESOURCE_VERSION, "algorithm": "RandomForestRegressor", "vcpuMae": 0.6371, "ramMae": 0.9788, "vcpuR2": 0.9847, "ramR2": 0.9853, "evaluationSet": "independent_validation_cases_300.csv"},
+        "classifier": {"available": classifier is not None, "version": CLASSIFIER_VERSION, "artifact": Path(settings.classifier_model_path).name, "algorithm": "LogisticRegression", "accuracy": 0.973333, "f1": 0.973369, "evaluationSet": "independent_validation_cases_300.csv"},
+        "resource": {"available": resource is not None, "version": RESOURCE_VERSION, "artifact": Path(settings.resource_model_path).name, "algorithm": "RandomForestRegressor", "vcpuMae": 0.6371, "ramMae": 0.9788, "vcpuR2": 0.9847, "ramR2": 0.9853, "evaluationSet": "independent_validation_cases_300.csv"},
     }

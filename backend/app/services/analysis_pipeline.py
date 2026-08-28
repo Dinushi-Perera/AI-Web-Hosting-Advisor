@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 from app.models import Project, ProjectInput, AnalysisRun, AnalysisJob, TechnologyDetection, TechnologyEvidence, PerformanceAudit, WorkloadEstimate, Recommendation, RecommendationScore, Optimization, ModelPrediction, AuditLog
 from app.services.url_security_service import validate_public_url, safe_fetch
 from app.services.technology_detector import detect_from_response
-from app.services.performance_service import audit as performance_audit
+from app.services.performance_service import audit as performance_audit, planned_budget
 from app.services.workload_estimator import estimate as estimate_workload
 from app.services.recommendation_service import build as build_recommendation, technology_suggestion
 from app.services.optimization_service import generate as generate_optimizations
 from app.services.notification_service import create_notification
-from app.services.report_service import generate_report
+from app.services.report_service import generate_report, refresh_report_evidence
+from app.services.project_validation_service import evaluate_project
 from app.core.exceptions import AppError
 from app.utils.enums import AnalysisStage
 
@@ -60,26 +61,31 @@ def process_analysis(db:Session,job_id:str):
         else:
             pairs=[("FRONTEND",payload.get("frontend")),("BACKEND",payload.get("backend")),("DATABASE",payload.get("database")),("CMS",payload.get("cms")),("CACHE",payload.get("cache")),("CDN",payload.get("cdn"))]
             tech=[{"category":c,"technology":v,"confidence":0.98,"confidence_label":"HIGH","evidence":[{"source":"USER_DECLARED","pattern":"Declared in project input","weight":0.98}]} for c,v in pairs if v and v not in {"Not Decided","None"}]
+            if not tech:
+                suggested=technology_suggestion(payload)
+                tech=[{"category":category.upper(),"technology":item["technology"],"confidence":item["score"]/100,"confidence_label":"HIGH" if item["score"]>=80 else "MEDIUM","evidence":[{"source":"SUGGESTED_FROM_REQUIREMENTS","pattern":item["reason"],"weight":item["score"]/100}]} for category,items in suggested.items() if isinstance(items,list) for item in items]
         for t in tech:
             td=TechnologyDetection(project_id=p.id,analysis_run_id=run.id,technology=t["technology"],category=t["category"],confidence=t["confidence"],confidence_label=t["confidence_label"]); db.add(td); db.flush()
             for e in t.get("evidence",[]): db.add(TechnologyEvidence(detection_id=td.id,source=e.get("source","UNKNOWN"),pattern=str(e.get("pattern",""))[:255],value_masked=None,weight=float(e.get("weight",1))))
         db.commit()
         set_stage(db,j,"PERFORMANCE_AUDIT",2)
-        perf=performance_audit(p.website_url) if p.mode=="LIVE_URL" and p.website_url else [{"strategy":"MOBILE","status":"UNAVAILABLE","performance_score":None,"accessibility_score":None,"best_practices_score":None,"seo_score":None,"metrics":{},"warning":"Performance audit is not available for a website that is not live."},{"strategy":"DESKTOP","status":"UNAVAILABLE","performance_score":None,"accessibility_score":None,"best_practices_score":None,"seo_score":None,"metrics":{},"warning":"Performance audit is not available for a website that is not live."}]
-        for a in perf: db.add(PerformanceAudit(project_id=p.id,analysis_run_id=run.id,strategy=a["strategy"],status=a["status"],performance_score=a.get("performance_score"),accessibility_score=a.get("accessibility_score"),best_practices_score=a.get("best_practices_score"),seo_score=a.get("seo_score"),metrics_json={**a.get("metrics",{}),"statuses":a.get("statuses",{})},warning=a.get("warning")))
+        perf=performance_audit(p.website_url) if p.mode=="LIVE_URL" and p.website_url else planned_budget(payload,p.mode)
+        for a in perf: db.add(PerformanceAudit(project_id=p.id,analysis_run_id=run.id,strategy=a["strategy"],status=a["status"],performance_score=a.get("performance_score"),accessibility_score=a.get("accessibility_score"),best_practices_score=a.get("best_practices_score"),seo_score=a.get("seo_score"),metrics_json={**a.get("metrics",{}),"statuses":a.get("statuses",{})},source=a.get("source","PageSpeed Insights"),warning=a.get("warning")))
         db.commit()
         set_stage(db,j,"WORKLOAD_CALCULATION",3); workload=estimate_workload(payload,p.mode); w=WorkloadEstimate(project_id=p.id,analysis_run_id=run.id,**workload); db.add(w); db.commit()
         set_stage(db,j,"RULE_EVALUATION",4)
         set_stage(db,j,"ML_PREDICTION",5)
         set_stage(db,j,"PRICING_COMPARISON",6)
-        set_stage(db,j,"FINAL_SCORING",7); rec_data=build_recommendation(db,payload,workload,tech,perf,inp.completeness_score,p.target_region,p.mode)
-        rec=Recommendation(project_id=p.id,analysis_run_id=run.id,recommended_option=rec_data["recommended_option"],overall_score=rec_data["overall_score"],confidence_value=rec_data["confidence"]["value"],confidence_label=rec_data["confidence"]["label"],resource_size=rec_data["resource_size"],estimated_cost=rec_data["estimated_cost"],alternatives=rec_data["alternatives"],reasons=rec_data["reasons"],assumptions=rec_data["assumptions"],warnings=rec_data["warnings"],rule_results=rec_data["rule_results"],model_version=rec_data["model_version"],model_probabilities=rec_data["model_probabilities"]); db.add(rec); db.flush()
-        for s in rec_data["scores"]: db.add(RecommendationScore(recommendation_id=rec.id,**s))
+        set_stage(db,j,"FINAL_SCORING",7); rec_data=build_recommendation(db,payload,workload,tech,perf,inp.completeness_score,p.mode)
+        llm=rec_data["llm_explanation"]
+        rec=Recommendation(project_id=p.id,analysis_run_id=run.id,recommended_option=rec_data["recommended_option"],overall_score=rec_data["overall_score"],confidence_value=rec_data["confidence"]["value"],confidence_label=rec_data["confidence"]["label"],resource_size=rec_data["resource_size"],estimated_cost=rec_data["estimated_cost"],alternatives=rec_data["alternatives"],reasons=rec_data["reasons"],assumptions=rec_data["assumptions"],warnings=rec_data["warnings"],rule_results=rec_data["rule_results"],model_version=rec_data["model_version"],model_probabilities=rec_data["model_probabilities"],decision_evidence=rec_data["decision_evidence"],cost_optimization=rec_data["cost_optimization"],llm_explanation=llm,llm_status=llm["status"],llm_model=llm.get("model")); db.add(rec); db.flush()
+        score_fields=("option","score","ml_probability","budget_fit","traffic_fit","scalability_fit","reliability_fit","operational_fit","rule_adjustments")
+        for s in rec_data["scores"]: db.add(RecommendationScore(recommendation_id=rec.id,**{key:s[key] for key in score_fields}))
         db.add(ModelPrediction(analysis_run_id=run.id,predicted_class=rec_data["recommended_option"],probabilities=rec_data["model_probabilities"],features=rec_data["model_features"],model_version_id=rec_data["model_version_id"])); db.commit()
         set_stage(db,j,"CONFIDENCE_CALCULATION",8)
         set_stage(db,j,"OPTIMIZATION_GENERATION",9); opts=generate_optimizations(perf,tech,workload,rec_data["recommended_option"])
         for o in opts: db.add(Optimization(project_id=p.id,analysis_run_id=run.id,status="OPEN",**o))
-        db.commit(); set_stage(db,j,"REPORT_PREPARATION",10); generate_report(db,p,p.user_id)
+        db.commit(); set_stage(db,j,"REPORT_PREPARATION",10); report=generate_report(db,p,p.user_id);evaluate_project(db,p,run.id,persist=True);refresh_report_evidence(db,p,report)
         j.status="COMPLETED"; j.progress=100; j.current_stage="REPORT_PREPARATION"; j.completed_at=utcnow(); j.stages_json=[{"name":x,"status":"COMPLETED"} for x in ALL_STAGES]; run.status="COMPLETED"; run.completed_at=utcnow(); p.status="COMPLETED"
         create_notification(db,p.user_id,"ANALYSIS_COMPLETED","Analysis completed",f"{p.title} is ready to review.",{"project_id":p.id,"job_id":j.id}); db.add(AuditLog(actor_user_id=p.user_id,action="ANALYSIS_COMPLETED",entity_type="PROJECT",entity_id=p.id,metadata_json={"job_id":j.id,"run_id":run.id})); db.commit(); return j
     except AppError as exc:

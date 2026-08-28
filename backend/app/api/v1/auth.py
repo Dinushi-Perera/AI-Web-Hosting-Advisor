@@ -8,16 +8,16 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 
 router=APIRouter(prefix="/auth",tags=["Authentication"])
-def user_json(u): return {"id":u.id,"fullName":u.full_name,"email":u.email,"role":u.role.lower(),"experienceLevel":u.experience_level.title(),"defaultRegion":u.default_region,"currency":"USD","timezone":u.timezone}
-def set_cookies(response:Response,access:str,refresh:str,remember=True):
+def user_json(u): return {"id":u.id,"fullName":u.full_name,"email":u.email,"role":u.role.lower(),"experienceLevel":u.experience_level.title(),"currency":"USD","timezone":u.timezone}
+def set_cookies(response:Response,access:str,refresh:str):
     response.set_cookie("advisor_session",access,httponly=True,secure=settings.cookie_secure,samesite=settings.cookie_samesite,path="/",max_age=settings.access_token_minutes*60)
-    response.set_cookie("advisor_refresh",refresh,httponly=True,secure=settings.cookie_secure,samesite=settings.cookie_samesite,path="/",max_age=settings.refresh_token_days*86400 if remember else None)
+    response.set_cookie("advisor_refresh",refresh,httponly=True,secure=settings.cookie_secure,samesite=settings.cookie_samesite,path="/",max_age=settings.refresh_token_days*86400)
 @router.post("/register",status_code=201)
 def register(req:RegisterRequest,response:Response,request:Request,db:Session=Depends(get_db)):
-    svc=AuthService(db); u=svc.register(req.fullName,req.email,req.password); u,access,refresh,_=svc.login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh,True); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
+    svc=AuthService(db); u=svc.register(req.fullName,req.email,req.password); u,access,refresh,_=svc.login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
 @router.post("/login")
 def login(req:LoginRequest,response:Response,request:Request,db:Session=Depends(get_db)):
-    u,access,refresh,_=AuthService(db).login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh,req.remember); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
+    u,access,refresh,_=AuthService(db).login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
 @router.post("/logout")
 def logout(response:Response,advisor_refresh:str|None=Cookie(default=None),db:Session=Depends(get_db)):
     AuthService(db).logout(advisor_refresh); response.delete_cookie("advisor_session",path="/"); response.delete_cookie("advisor_refresh",path="/"); return {"success":True,"message":"Signed out."}

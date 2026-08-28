@@ -1,0 +1,13 @@
+{
+  "fixture_notice": "TEST FIXTURE — not a real user test result",
+  "metrics": {
+    "http_req_duration": {"values": {"avg": 680, "min": 90, "med": 510, "max": 1900, "p(90)": 1100, "p(95)": 1420, "p(99)": 1840}},
+    "http_req_failed": {"values": {"rate": 0.004}},
+    "http_reqs": {"values": {"count": 15660, "rate": 58}},
+    "iterations": {"values": {"count": 15100, "rate": 55.9}},
+    "vus_max": {"values": {"max": 300}},
+    "checks": {"values": {"passes": 15660, "fails": 0}},
+    "data_received": {"values": {"count": 84500000}},
+    "data_sent": {"values": {"count": 2300000}}
+  }
+}
