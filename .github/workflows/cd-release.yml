@@ -1,0 +1,145 @@
+name: CD - GitHub Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Optional release tag (defaults to v<package-version>)
+        required: false
+        type: string
+      prerelease:
+        description: Mark a manually dispatched release as a pre-release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: github-release-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create tag and GitHub release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve source commit
+        id: source
+        shell: bash
+        env:
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            echo "sha=${WORKFLOW_RUN_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          REQUESTED_PRERELEASE: ${{ inputs.prerelease }}
+          CI_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          package_version=$(node -p "require('./frontend/package.json').version")
+          if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semantic version in frontend/package.json: $package_version" >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            tag="v${package_version}-build.${CI_RUN_NUMBER}"
+            prerelease=true
+          else
+            tag="${REQUESTED_TAG:-v${package_version}}"
+            prerelease="${REQUESTED_PRERELEASE:-false}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be semantic and start with v: $tag" >&2
+            exit 1
+          fi
+
+          if git rev-parse --verify --quiet "refs/tags/$tag"; then
+            echo "Release tag already exists: $tag" >&2
+            exit 1
+          fi
+
+          {
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+            echo "archive=AI-Web-Hosting-Advisor-${tag}.tar.gz"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release archive and checksum
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          ARCHIVE: ${{ steps.release.outputs.archive }}
+        run: |
+          mkdir -p dist
+          git archive \
+            --format=tar.gz \
+            --prefix="AI-Web-Hosting-Advisor-${RELEASE_TAG}/" \
+            --output="dist/${ARCHIVE}" \
+            "$SOURCE_SHA"
+          sha256sum "dist/${ARCHIVE}" > "dist/${ARCHIVE}.sha256"
+
+      - name: Create GitHub tag and release
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
+          ARCHIVE: ${{ steps.release.outputs.archive }}
+        run: |
+          release_args=(
+            "$RELEASE_TAG"
+            "dist/${ARCHIVE}"
+            "dist/${ARCHIVE}.sha256"
+            --target "$SOURCE_SHA"
+            --title "AI Web Hosting Advisor ${RELEASE_TAG}"
+            --generate-notes
+          )
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "${release_args[@]}"
+
+      - name: Write workflow summary
+        if: success()
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
+        run: |
+          {
+            echo "## GitHub release created"
+            echo
+            echo "- Tag: \`$RELEASE_TAG\`"
+            echo "- Commit: \`$SOURCE_SHA\`"
+            echo "- Pre-release: \`$IS_PRERELEASE\`"
+          } >> "$GITHUB_STEP_SUMMARY"

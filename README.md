@@ -1224,6 +1224,11 @@ Docker starts:
 | Redis | 6379 | Queue/cache |
 | Worker | internal | Celery analysis jobs |
 
+The published ports can be changed with `FRONTEND_HOST_PORT`,
+`BACKEND_HOST_PORT`, `MYSQL_HOST_PORT`, and `REDIS_HOST_PORT` in the root
+`.env` file. If the backend port changes, update `DOCKER_PUBLIC_API_BASE_URL`
+to match before rebuilding the frontend image.
+
 ## 5. Open the application
 
 ```text

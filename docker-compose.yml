@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.4
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_web_hosting_advisor}
       MYSQL_USER: ${MYSQL_APP_USER:-hosting_app}
@@ -20,9 +21,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,6 +36,8 @@ services:
   backend:
     build:
       context: ./backend
+    restart: unless-stopped
+    init: true
     environment: &backend_env
       APP_ENV: development
       APP_NAME: AI Web Hosting Advisor
@@ -105,7 +109,6 @@ services:
         condition: service_healthy
     volumes:
       - backend_storage:/app/storage
-      - backend_models:/app/app/ml/models
       - ./models:/app/models:ro
     command: sh -c "alembic upgrade head && python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
@@ -118,6 +121,8 @@ services:
   worker:
     build:
       context: ./backend
+    restart: unless-stopped
+    init: true
     environment: *backend_env
     depends_on:
       mysql:
@@ -126,7 +131,6 @@ services:
         condition: service_healthy
     volumes:
       - backend_storage:/app/storage
-      - backend_models:/app/app/ml/models
       - ./models:/app/models:ro
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
 
@@ -137,6 +141,8 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${DOCKER_PUBLIC_API_BASE_URL:-http://localhost:8001/api/v1}
         NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
         NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
+    restart: unless-stopped
+    init: true
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${DOCKER_PUBLIC_API_BASE_URL:-http://localhost:8001/api/v1}
       NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
@@ -146,9 +152,14 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
 volumes:
   mysql_data:
   redis_data:
   backend_storage:
-  backend_models:
