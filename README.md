@@ -1968,13 +1968,7 @@ Large future ML artifacts can use Git LFS if necessary.
 
 # License
 
-The recommended license for this project's original source code is the **MIT License**.
-
-Add a root file:
-
-```text
-LICENSE
-```
+This project's original source code is licensed under the **MIT License**. See [`LICENSE`](LICENSE) for the complete terms.
 
 Third-party datasets and external resources remain subject to their own original licenses/terms and should not be re-licensed as project-owned data.
 
