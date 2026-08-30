@@ -38,7 +38,10 @@ jobs:
       - name: Run backend tests
         run: mkdir -p test-results && python -m pytest --junitxml=test-results/junit.xml
       - name: Upload backend test results
-        if: always()
+        # A superseding CI run can cancel this job before pytest creates the
+        # report. Upload only when a report exists, while still preserving it
+        # when pytest itself fails.
+        if: ${{ !cancelled() && hashFiles('backend/test-results/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-results
@@ -72,7 +75,9 @@ jobs:
       - name: Build frontend
         run: npm run build
       - name: Upload frontend test results
-        if: always()
+        # Do not turn an expected concurrency cancellation into a misleading
+        # "No files were found" artifact error. Failed test reports still upload.
+        if: ${{ !cancelled() && hashFiles('frontend/test-results/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: frontend-test-results

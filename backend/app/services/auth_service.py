@@ -1,6 +1,7 @@
 import hashlib
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models import UserSession, PasswordResetToken, AuditLog
 from app.repositories.user_repository import UserRepository
@@ -18,10 +19,21 @@ def mask_ip(ip: str | None):
 class AuthService:
     def __init__(self,db:Session): self.db=db; self.users=UserRepository(db)
     def register(self,full_name,email,password):
-        if self.users.by_email(email): raise AppError("AUTH_EMAIL_EXISTS","An account already exists for this email.",409)
-        u=self.users.create(full_name=full_name.strip(),email=email.lower(),password_hash=hash_password(password),status="ACTIVE")
-        self.db.add(AuditLog(actor_user_id=u.id,action="REGISTER",entity_type="USER",entity_id=u.id))
-        self.db.commit(); return u
+        normalized_email=email.strip().lower()
+        if self.users.by_email(normalized_email):
+            raise AppError("AUTH_EMAIL_EXISTS","An account already exists for this email.",409)
+        try:
+            u=self.users.create(full_name=full_name.strip(),email=normalized_email,password_hash=hash_password(password),status="ACTIVE")
+            self.db.add(AuditLog(actor_user_id=u.id,action="REGISTER",entity_type="USER",entity_id=u.id))
+            self.db.commit()
+        except IntegrityError as exc:
+            # The database unique constraint is the final guard when two
+            # registration requests for the same email arrive concurrently.
+            self.db.rollback()
+            if self.users.by_email(normalized_email):
+                raise AppError("AUTH_EMAIL_EXISTS","An account already exists for this email.",409) from exc
+            raise
+        return u
     def login(self,email,password,ip=None,user_agent=None):
         u=self.users.by_email(email)
         now=utcnow()

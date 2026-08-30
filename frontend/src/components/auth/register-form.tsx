@@ -16,6 +16,7 @@ import { authService } from "@/services/auth-service";
 
 type Values=z.infer<typeof registerSchema>;
 const errorMessage=(error:unknown)=>error&&typeof error==="object"&&"message" in error?String(error.message):"Account creation failed. Please try again.";
+const errorCode=(error:unknown)=>error&&typeof error==="object"&&"code" in error?String(error.code):undefined;
 
 export function RegisterForm(){
   const router=useRouter();
@@ -23,7 +24,7 @@ export function RegisterForm(){
   const form=useForm<Values>({resolver:zodResolver(registerSchema),defaultValues:{fullName:"",email:"",password:"",confirmPassword:""}});
   const password=useWatch({control:form.control,name:"password"})||"";
   const rules=[["8+ characters",password.length>=8],["uppercase",/[A-Z]/.test(password)],["lowercase",/[a-z]/.test(password)],["number",/[0-9]/.test(password)],["special character",/[^A-Za-z0-9]/.test(password)]] as const;
-  const submit=async(values:Values)=>{try{await authService.register({fullName:values.fullName,email:values.email,password:values.password});toast.success("Account saved. You are now signed in.");router.replace("/onboarding")}catch(error){toast.error(errorMessage(error))}};
+  const submit=async(values:Values)=>{try{const result=await authService.register({fullName:values.fullName,email:values.email,password:values.password});toast.success(result.message||"Registration successful. You are now signed in.",{duration:5000});router.replace("/onboarding")}catch(error){const message=errorMessage(error);if(errorCode(error)==="AUTH_EMAIL_EXISTS")form.setError("email",{type:"server",message});toast.error(message)}};
   return <form onSubmit={form.handleSubmit(submit)} className="grid gap-4">
     <Field label="Full Name" error={form.formState.errors.fullName?.message}><Input autoComplete="name" placeholder="Sarah Perera" {...form.register("fullName")}/></Field>
     <Field label="Email" error={form.formState.errors.email?.message}><Input type="email" autoComplete="email" placeholder="you@example.com" {...form.register("email")}/></Field>

@@ -5,12 +5,20 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
+from app.core.rate_limit import RateLimitMiddleware
 from app.main import app
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    RateLimitMiddleware.buckets.clear()
+    yield
+    RateLimitMiddleware.buckets.clear()
 
 
 @pytest.fixture

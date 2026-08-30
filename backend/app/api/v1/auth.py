@@ -14,7 +14,7 @@ def set_cookies(response:Response,access:str,refresh:str):
     response.set_cookie("advisor_refresh",refresh,httponly=True,secure=settings.cookie_secure,samesite=settings.cookie_samesite,path="/",max_age=settings.refresh_token_days*86400)
 @router.post("/register",status_code=201)
 def register(req:RegisterRequest,response:Response,request:Request,db:Session=Depends(get_db)):
-    svc=AuthService(db); u=svc.register(req.fullName,req.email,req.password); u,access,refresh,_=svc.login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
+    svc=AuthService(db); u=svc.register(req.fullName,req.email,req.password); u,access,refresh,_=svc.login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh); return {"success":True,"message":"Registration successful.","user":user_json(u),"accessToken":access,"tokenType":"bearer"}
 @router.post("/login")
 def login(req:LoginRequest,response:Response,request:Request,db:Session=Depends(get_db)):
     u,access,refresh,_=AuthService(db).login(req.email,req.password,request.client.host if request.client else None,request.headers.get("user-agent")); set_cookies(response,access,refresh); return {"user":user_json(u),"accessToken":access,"tokenType":"bearer"}
