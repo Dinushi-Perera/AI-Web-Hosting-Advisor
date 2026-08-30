@@ -1740,8 +1740,8 @@ SET @seed_user_password_hash = '$2b$12$c1dP.qRmUNTINNgl7s0UWOF.uLU2ccHngnB3u4z44
 SET @seed_user_id = '94000000-0000-0000-0000-000000000001';
 
 INSERT INTO users
-(id, full_name, email, password_hash, role, status, is_verified, experience_level, timezone)
-SELECT @seed_user_id, 'Hosting Advisor Demo User', @seed_user_email, @seed_user_password_hash,
+(id, public_id, full_name, email, password_hash, role, status, is_verified, experience_level, timezone)
+SELECT @seed_user_id, @seed_user_id, 'Hosting Advisor Demo User', @seed_user_email, @seed_user_password_hash,
        'USER', 'ACTIVE', 1, 'INTERMEDIATE', 'Asia/Colombo'
 WHERE @seed_user_password_hash IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM users WHERE email = @seed_user_email);
@@ -1837,7 +1837,8 @@ AND NOT EXISTS (SELECT 1 FROM recommendation_rule_results WHERE id='95000000-000
 INSERT INTO recommendations
 (id, project_id, analysis_run_id, model_prediction_id, recommended_option, overall_score, confidence_value, confidence_label,
  resource_size, estimated_cost, alternatives, reasons, assumptions, warnings, rule_results, model_version,
- model_probabilities, is_current, is_stale, recommendation_engine_version, scoring_config_version)
+ model_probabilities, decision_evidence, cost_optimization, llm_explanation,
+ is_current, is_stale, recommendation_engine_version, scoring_config_version)
 SELECT
 '95000000-0000-0000-0000-000000000005', p.id, '95000000-0000-0000-0000-000000000003','95000000-0000-0000-0000-000000000028',
 'CLOUD_VM',88.00,0.87,'HIGH',
@@ -1846,7 +1847,8 @@ JSON_OBJECT('currency','USD','min',55.00,'max',80.00,'pricing_updated_at',CURREN
 JSON_ARRAY(JSON_OBJECT('option','VPS','score',71),JSON_OBJECT('option','KUBERNETES','score',62)),
 JSON_ARRAY(JSON_OBJECT('label','Traffic fit','score',91,'note','Suitable for the expected peak workload.'),JSON_OBJECT('label','Budget fit','score',82,'note','Fits the USD 100 monthly budget.')),
 JSON_ARRAY('Planned traffic is based on user estimates.'),JSON_ARRAY(),JSON_ARRAY(),NULL,
-JSON_OBJECT('VPS',0.10,'CLOUD_VM',0.87,'KUBERNETES',0.03),1,0,'1.0.0','1.0.0'
+ JSON_OBJECT('VPS',0.10,'CLOUD_VM',0.87,'KUBERNETES',0.03),
+ JSON_OBJECT(),JSON_OBJECT(),JSON_OBJECT(),1,0,'1.0.0','1.0.0'
 FROM projects p
 WHERE p.id='95000000-0000-0000-0000-000000000001'
   AND NOT EXISTS (SELECT 1 FROM recommendations WHERE id='95000000-0000-0000-0000-000000000005');
@@ -2002,5 +2004,13 @@ SELECT '95000000-0000-0000-0000-000000000027',p.user_id,p.id,'ANALYSIS_COMPLETED
 FROM projects p
 WHERE p.id='95000000-0000-0000-0000-000000000001'
 AND NOT EXISTS (SELECT 1 FROM notifications WHERE id='95000000-0000-0000-0000-000000000027');
+
+-- Mark this current-schema export so the backend can safely run future upgrades.
+CREATE TABLE IF NOT EXISTS alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+DELETE FROM alembic_version;
+INSERT INTO alembic_version (version_num) VALUES ('20260827_0012');
 
 SELECT 'ai_web_hosting_advisor schema installed successfully - USD only' AS installation_status;

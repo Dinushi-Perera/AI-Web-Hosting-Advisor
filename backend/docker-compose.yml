@@ -8,9 +8,8 @@ services:
       MYSQL_ROOT_PASSWORD: root_change_me
     volumes:
       - mysql_data:/var/lib/mysql
-      - ../database/ai_web_hosting_advisor.sql:/docker-entrypoint-initdb.d/001_ai_web_hosting_advisor.sql:ro
     healthcheck:
-      test: ["CMD","mysqladmin","ping","-h","localhost","-proot_change_me"]
+      test: ["CMD-SHELL", "mysql --protocol=tcp -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} -D $${MYSQL_DATABASE} -e 'SELECT 1' --silent"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -54,7 +53,7 @@ services:
     volumes:
       - ./storage:/app/storage
       - ./app/ml/models:/app/app/ml/models
-    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "python -m scripts.migrate && python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
   worker:
     build: .
     environment: *backend_env

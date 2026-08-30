@@ -1171,6 +1171,12 @@ Install:
 
 No local MySQL/Redis installation is required when using Docker.
 
+On the first start, MySQL creates the empty application database and the
+backend creates the current ORM schema, records the Alembic head revision, and
+inserts the development seed data. Existing Alembic-managed databases receive
+normal upgrades. The reference SQL export under `database/` is not imported by
+Compose; this avoids applying the current schema twice.
+
 ## 1. Clone the repository
 
 ```bash
