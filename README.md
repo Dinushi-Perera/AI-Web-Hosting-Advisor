@@ -1852,6 +1852,44 @@ Override `FRONTEND_HOST_PORT`, `BACKEND_HOST_PORT`, `MYSQL_HOST_PORT`, and `DOCK
 
 # Production Deployment Notes
 
+## GitHub Container Registry
+
+The repository publishes the application images to GitHub Container Registry (GHCR):
+
+```text
+ghcr.io/dinushi-perera/ai-web-hosting-advisor-backend
+ghcr.io/dinushi-perera/ai-web-hosting-advisor-frontend
+```
+
+The Celery worker uses the backend image. Pushes to `main` publish `latest`, `main`, and a commit-SHA tag. Version tags such as `v1.0.0-build.6` publish the version tag and a commit-SHA tag.
+
+For public packages, pull and start the published images with:
+
+```bash
+docker compose pull backend worker frontend
+docker compose up -d --no-build
+```
+
+For private packages, authenticate first with a GitHub personal access token that has `read:packages` permission:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+docker compose pull backend worker frontend
+docker compose up -d --no-build
+```
+
+Choose a published version by setting `CONTAINER_TAG` in `.env`:
+
+```env
+CONTAINER_REGISTRY=ghcr.io
+CONTAINER_NAMESPACE=dinushi-perera
+CONTAINER_TAG=v1.0.0-build.6
+```
+
+The frontend API URL is embedded during the container build. Set the repository Actions variable `DOCKER_PUBLIC_API_BASE_URL` to the externally reachable backend API URL before publishing production images. If the variable is unset, the workflow uses `http://localhost:8001/api/v1`.
+
+The **Publish GHCR Containers** workflow uses GitHub's built-in token with `packages: write`; no registry password or personal access token is required in repository secrets. Newly created package visibility and access can be managed under the repository or account package settings.
+
 Before deploying beyond local/demo use:
 
 1. Replace all example passwords and secrets.
