@@ -32,6 +32,26 @@ services:
       timeout: 3s
       retries: 30
 
+  storage-init:
+    image: ${CONTAINER_REGISTRY:-ghcr.io}/${CONTAINER_NAMESPACE:-dinushi-perera}/ai-web-hosting-advisor-backend:${CONTAINER_TAG:-latest}
+    build:
+      context: ./backend
+    user: "0:0"
+    restart: "no"
+    volumes:
+      - type: volume
+        source: backend_storage
+        target: /app/storage
+        volume:
+          nocopy: true
+    command: >-
+      sh -c "mkdir -p
+      /app/storage/reports
+      /app/storage/load_tests
+      /app/storage/avatars
+      /app/storage/datasets
+      && chown -R 10001:10001 /app/storage"
+
   backend:
     image: ${CONTAINER_REGISTRY:-ghcr.io}/${CONTAINER_NAMESPACE:-dinushi-perera}/ai-web-hosting-advisor-backend:${CONTAINER_TAG:-latest}
     build:
@@ -107,8 +127,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     volumes:
-      - backend_storage:/app/storage
+      - type: volume
+        source: backend_storage
+        target: /app/storage
+        volume:
+          nocopy: true
       - ./models:/app/models:ro
     command: sh -c "python -m scripts.migrate && python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
@@ -130,8 +156,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     volumes:
-      - backend_storage:/app/storage
+      - type: volume
+        source: backend_storage
+        target: /app/storage
+        volume:
+          nocopy: true
       - ./models:/app/models:ro
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
 
