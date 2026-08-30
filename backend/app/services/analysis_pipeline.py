@@ -19,6 +19,19 @@ logger = logging.getLogger(__name__)
 
 def utcnow(): return datetime.now(timezone.utc)
 ALL_STAGES=[s.value for s in AnalysisStage]
+RECOVERABLE_LIVE_EVIDENCE_ERRORS={"URL_UNREACHABLE","URL_FETCH_TIMEOUT","URL_RESPONSE_TOO_LARGE","URL_TOO_MANY_REDIRECTS","URL_INVALID_REDIRECT"}
+
+def collect_live_evidence(raw_url:str):
+    """Fetch optional public-site evidence without turning network failures into analysis failures."""
+    try:
+        url=validate_public_url(raw_url)
+        return url,safe_fetch(url),None
+    except AppError as exc:
+        if exc.code not in RECOVERABLE_LIVE_EVIDENCE_ERRORS:
+            raise
+        logger.warning("Live website evidence unavailable",extra={"error_code":exc.code})
+        warning=f"Direct website inspection was unavailable ({exc.code}); technology detection was skipped and recommendation confidence was reduced."
+        return raw_url,None,warning
 
 def _job(db,job_id):
     j=db.get(AnalysisJob,job_id)
@@ -47,12 +60,12 @@ def start_analysis(db:Session,project:Project)->AnalysisJob:
 def process_analysis(db:Session,job_id:str):
     j=_job(db,job_id); p=db.get(Project,j.project_id); run=db.get(AnalysisRun,j.analysis_run_id); inp=db.scalar(select(ProjectInput).where(ProjectInput.project_id==p.id)); payload=inp.payload or {}
     j.status="RUNNING"; j.started_at=utcnow(); run.status="RUNNING"; run.started_at=utcnow(); p.status="ANALYSING"; db.commit()
-    tech=[]; perf=[]
+    tech=[]; perf=[]; live_evidence_warning=None
     try:
         set_stage(db,j,"URL_VALIDATION",0)
         response=None
         if p.mode=="LIVE_URL":
-            url=validate_public_url(payload.get("websiteUrl") or p.website_url); response=safe_fetch(url); p.website_url=url
+            url,response,live_evidence_warning=collect_live_evidence(payload.get("websiteUrl") or p.website_url); p.website_url=url
         set_stage(db,j,"TECHNOLOGY_DETECTION",1)
         if p.mode=="LIVE_URL" and response:
             tech=detect_from_response(response)
@@ -70,6 +83,9 @@ def process_analysis(db:Session,job_id:str):
         db.commit()
         set_stage(db,j,"PERFORMANCE_AUDIT",2)
         perf=performance_audit(p.website_url) if p.mode=="LIVE_URL" and p.website_url else planned_budget(payload,p.mode)
+        if live_evidence_warning:
+            for audit in perf:
+                audit["warning"]=" ".join(part for part in (live_evidence_warning,audit.get("warning")) if part)
         for a in perf: db.add(PerformanceAudit(project_id=p.id,analysis_run_id=run.id,strategy=a["strategy"],status=a["status"],performance_score=a.get("performance_score"),accessibility_score=a.get("accessibility_score"),best_practices_score=a.get("best_practices_score"),seo_score=a.get("seo_score"),metrics_json={**a.get("metrics",{}),"statuses":a.get("statuses",{})},source=a.get("source","PageSpeed Insights"),warning=a.get("warning")))
         db.commit()
         set_stage(db,j,"WORKLOAD_CALCULATION",3); workload=estimate_workload(payload,p.mode); w=WorkloadEstimate(project_id=p.id,analysis_run_id=run.id,**workload); db.add(w); db.commit()
@@ -77,6 +93,8 @@ def process_analysis(db:Session,job_id:str):
         set_stage(db,j,"ML_PREDICTION",5)
         set_stage(db,j,"PRICING_COMPARISON",6)
         set_stage(db,j,"FINAL_SCORING",7); rec_data=build_recommendation(db,payload,workload,tech,perf,inp.completeness_score,p.mode)
+        if live_evidence_warning and live_evidence_warning not in rec_data["warnings"]:
+            rec_data["warnings"].insert(0,live_evidence_warning)
         llm=rec_data["llm_explanation"]
         rec=Recommendation(project_id=p.id,analysis_run_id=run.id,recommended_option=rec_data["recommended_option"],overall_score=rec_data["overall_score"],confidence_value=rec_data["confidence"]["value"],confidence_label=rec_data["confidence"]["label"],resource_size=rec_data["resource_size"],estimated_cost=rec_data["estimated_cost"],alternatives=rec_data["alternatives"],reasons=rec_data["reasons"],assumptions=rec_data["assumptions"],warnings=rec_data["warnings"],rule_results=rec_data["rule_results"],model_version=rec_data["model_version"],model_probabilities=rec_data["model_probabilities"],decision_evidence=rec_data["decision_evidence"],cost_optimization=rec_data["cost_optimization"],llm_explanation=llm,llm_status=llm["status"],llm_model=llm.get("model")); db.add(rec); db.flush()
         score_fields=("option","score","ml_probability","budget_fit","traffic_fit","scalability_fit","reliability_fit","operational_fit","rule_adjustments")

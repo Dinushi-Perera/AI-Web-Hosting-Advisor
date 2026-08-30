@@ -66,17 +66,24 @@ def safe_fetch(url:str, max_bytes:int|None=None):
     current=validate_public_url(url); max_bytes=max_bytes or settings.max_external_response_bytes
     timeout=httpx.Timeout(settings.http_read_timeout,connect=settings.http_connect_timeout)
     start=time.perf_counter()
-    with httpx.Client(timeout=timeout,follow_redirects=False,headers={"User-Agent":"AIHostingAdvisor/1.0"}) as client:
-        for _ in range(settings.max_redirects+1):
-            validate_public_url(current)
-            with client.stream("GET",current) as resp:
-                if resp.status_code in {301,302,303,307,308}:
-                    loc=resp.headers.get("location")
-                    if not loc: break
-                    current=urljoin(current,loc); continue
-                content=bytearray()
-                for chunk in resp.iter_bytes():
-                    content.extend(chunk)
-                    if len(content)>max_bytes: raise AppError("URL_RESPONSE_TOO_LARGE","Website response exceeded the safe analysis limit.",400)
-                return {"url":current,"status_code":resp.status_code,"headers":dict(resp.headers),"content":bytes(content),"response_time_ms":round((time.perf_counter()-start)*1000)}
+    try:
+        with httpx.Client(timeout=timeout,follow_redirects=False,headers={"User-Agent":"AIHostingAdvisor/1.0"}) as client:
+            for _ in range(settings.max_redirects+1):
+                validate_public_url(current)
+                with client.stream("GET",current) as resp:
+                    if resp.status_code in {301,302,303,307,308}:
+                        loc=resp.headers.get("location")
+                        if not loc: break
+                        current=urljoin(current,loc); continue
+                    content=bytearray()
+                    for chunk in resp.iter_bytes():
+                        content.extend(chunk)
+                        if len(content)>max_bytes: raise AppError("URL_RESPONSE_TOO_LARGE","Website response exceeded the safe analysis limit.",400)
+                    return {"url":current,"status_code":resp.status_code,"headers":dict(resp.headers),"content":bytes(content),"response_time_ms":round((time.perf_counter()-start)*1000)}
+    except AppError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise AppError("URL_FETCH_TIMEOUT","The website did not respond within the safe analysis timeout.",400) from exc
+    except httpx.HTTPError as exc:
+        raise AppError("URL_UNREACHABLE","The website could not be reached safely for direct inspection.",400) from exc
     raise AppError("URL_TOO_MANY_REDIRECTS","Too many redirects.",400)
